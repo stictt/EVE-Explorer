@@ -1,0 +1,11 @@
+{
+  "Version": 1,
+  "Hash": "e99aznqFobCod9Wn1rq33WTy+r8JaA7rLJgyU+UTrN4=",
+  "Source": "PrimaryAggregatorService",
+  "BasePath": "_content/PrimaryAggregatorService",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": []
+}
