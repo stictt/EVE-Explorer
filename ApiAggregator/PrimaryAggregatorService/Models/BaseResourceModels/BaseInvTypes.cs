@@ -2,8 +2,10 @@
 
 namespace PrimaryAggregatorService.Models.ResourceDTO
 {
+
     public class BaseInvTypes
     {
+        #pragma warning disable CS8618
         [Name("typeID")]
         public int TypeID { get; set; }
         [Name("groupID")]
