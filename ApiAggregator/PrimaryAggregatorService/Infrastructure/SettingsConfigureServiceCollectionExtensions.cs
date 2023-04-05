@@ -1,12 +1,14 @@
 ﻿
+using PrimaryAggregatorService.Models;
+
 namespace PrimaryAggregatorService.Infrastructure
 {
-    public static class SettingsConfigureServiceCollectionExtensions
+    public static class ConfigureSettingsServiceCollectionExtensions
     {
         public static IServiceCollection AddSettings(
         this IServiceCollection services, ConfigurationManager configuration)
         {
-            services.Configure<Settings>(configuration.GetSection("Settings"));
+            services.Configure<DefaultRegionSettings>(configuration.GetSection("DefaultRegion"));
             return services;
         }
     }

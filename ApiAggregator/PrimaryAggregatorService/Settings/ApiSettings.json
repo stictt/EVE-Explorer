@@ -1,5 +1,5 @@
 {
-  "Default": {
+  "DefaultRegion": {
     "DefaultRegionID": 10000002,
     "DefaultSystems": [ 30000142, 30000144 ]
   }
