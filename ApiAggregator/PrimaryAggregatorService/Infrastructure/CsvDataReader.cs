@@ -12,13 +12,11 @@ namespace PrimaryAggregatorService.Infrastructure
             _filePath = filePath;
         }
 
-        public IEnumerable<T> Read()
+        public List<T> Read()
         {
-            using (var reader = new StreamReader(_filePath))
-            using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-            {
-                return csv.GetRecords<T>().ToList();
-            }
+            using var reader = new StreamReader(_filePath);
+            using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
+            return csv.GetRecords<T>().ToList();
         }
     }
 }

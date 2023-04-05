@@ -2,6 +2,6 @@
 {
     public interface ICSVMapFactoryService
     {
-        public List<TOut> GetCsvData<TOut,TInput>() where TOut : class where TInput : class ;
+        public List<TOut> GetCsvData<TOut,TInput>(List<TInput> inputs) where TOut : class where TInput : class ;
     }
 }
