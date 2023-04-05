@@ -1,4 +1,4 @@
-﻿using PrimaryAggregatorService.Infrastructure.Interface;
+﻿
 using PrimaryAggregatorService.Models.ResourceDTO;
 using System;
 using System.Globalization;
