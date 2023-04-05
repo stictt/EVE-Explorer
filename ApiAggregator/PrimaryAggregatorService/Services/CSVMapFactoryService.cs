@@ -15,9 +15,7 @@ namespace PrimaryAggregatorService.Services
                 {
                     result.Add(ParseBaseInvTypeToAvailableGameResourceDTO(x));
                 });
-
             return result;
-
         }
 
         private AvailableGameResourceDTO ParseBaseInvTypeToAvailableGameResourceDTO(BaseInvType value)
