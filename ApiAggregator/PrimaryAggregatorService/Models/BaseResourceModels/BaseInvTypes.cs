@@ -3,7 +3,7 @@
 namespace PrimaryAggregatorService.Models.ResourceDTO
 {
 
-    public class BaseInvTypes
+    public class BaseInvType
     {
         #pragma warning disable CS8618
         [Name("typeID")]
