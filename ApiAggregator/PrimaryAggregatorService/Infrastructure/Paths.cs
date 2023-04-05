@@ -13,5 +13,7 @@
         public static string DataMapSolarSystemsPath => Path.Combine(DataResourcePath, "mapSolarSystems.csv");
         public static string DataPlanetSchematicsTypeMapPath => Path.Combine(DataResourcePath, "planetSchematicsTypeMap.csv");
         public static string DataStaStationsPath => Path.Combine(DataResourcePath, "staStations.csv");
+        public static string DataSettingPath => Path.Combine(CurrentDirectory, "Settings");
+        public static string ApiSettingsPath => Path.Combine(DataSettingPath, "ApiSettings.json");
     }
 }
