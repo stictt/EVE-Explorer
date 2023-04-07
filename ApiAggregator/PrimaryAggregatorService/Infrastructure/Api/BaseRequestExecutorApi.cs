@@ -16,7 +16,7 @@ namespace PrimaryAggregatorService.Infrastructure.Api
             _сheckResponseAndThrow = сheckResponseAndThrow;
         }
 
-        public async Task<BaseResponseHttp> Execute(UriBuilder uriBuilder, HttpMethod method = null)
+        public async Task<BaseResponseHttp> Execute(UriBuilder uriBuilder,CancellationToken token, HttpMethod method = null)
         {
             BaseResponseHttp result = new BaseResponseHttp();
 
@@ -26,7 +26,14 @@ namespace PrimaryAggregatorService.Infrastructure.Api
                 Method = method ?? HttpMethod.Get
             };
 
-            var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
+            var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+
+            if (token.IsCancellationRequested) 
+            {
+                TaskCompletionSource<BaseResponseHttp> taskCancellation = new ();
+                taskCancellation.SetCanceled();
+                return await taskCancellation.Task;
+            }
 
             result.StatusCode = response.StatusCode;
             result.Headers = response.Headers;
