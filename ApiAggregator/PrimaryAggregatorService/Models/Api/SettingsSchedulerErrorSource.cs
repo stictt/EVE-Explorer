@@ -1,4 +1,4 @@
-﻿namespace PrimaryAggregatorService.Infrastructure.Api
+﻿namespace PrimaryAggregatorService.Models.Api
 {
     public class SettingsSchedulerErrorSource
     {

@@ -1,4 +1,5 @@
-﻿using PrimaryAggregatorService.Models.Api;
+﻿using PrimaryAggregatorService.Infrastructure.Interface;
+using PrimaryAggregatorService.Models.Api;
 using static System.Net.WebRequestMethods;
 
 namespace PrimaryAggregatorService.Infrastructure.Api
@@ -16,15 +17,11 @@ namespace PrimaryAggregatorService.Infrastructure.Api
             _сheckResponseAndThrow = сheckResponseAndThrow;
         }
 
-        public async Task<BaseResponseHttp> Execute(UriBuilder uriBuilder,CancellationToken token, HttpMethod method = null)
+        public async Task<BaseResponseHttp> Execute(IPlanRequest uriBuilder,CancellationToken token, HttpMethod method = null)
         {
             BaseResponseHttp result = new BaseResponseHttp();
 
-            var request = new HttpRequestMessage
-            {
-                RequestUri = uriBuilder.Uri,
-                Method = method ?? HttpMethod.Get
-            };
+            var request = new HttpRequestMessage(method ?? HttpMethod.Get, uriBuilder.GetURL());
 
             var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
 
