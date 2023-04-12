@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using PrimaryAggregatorService.Infrastructure.Interface;
+using System.Net;
 using System.Net.Http.Headers;
 
 namespace PrimaryAggregatorService.Models.Api
@@ -9,6 +10,6 @@ namespace PrimaryAggregatorService.Models.Api
         public bool Error { get; set; }
         public string Message { get; set; }
         public HttpStatusCode StatusCode { get; set; }
-
+        public IPlanRequest PlanRequest { get; set; }
     }
 }

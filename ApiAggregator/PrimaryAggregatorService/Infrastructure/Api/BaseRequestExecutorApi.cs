@@ -20,6 +20,7 @@ namespace PrimaryAggregatorService.Infrastructure.Api
         public async Task<BaseResponseHttp> Execute(IPlanRequest uriBuilder,CancellationToken token, HttpMethod method = null)
         {
             BaseResponseHttp result = new BaseResponseHttp();
+            result.PlanRequest = uriBuilder;
 
             var request = new HttpRequestMessage(method ?? HttpMethod.Get, uriBuilder.GetURL());
 

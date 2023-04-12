@@ -1,4 +1,5 @@
-﻿using PrimaryAggregatorService.Infrastructure.Api;
+﻿using Newtonsoft.Json.Linq;
+using PrimaryAggregatorService.Infrastructure.Api;
 using PrimaryAggregatorService.Infrastructure.Exceptions;
 using PrimaryAggregatorService.Infrastructure.Interface;
 using PrimaryAggregatorService.Models.Api;
@@ -20,7 +21,7 @@ namespace PrimaryAggregatorService.Services
         private ILogger _logger;
         private readonly SemaphoreSlim _semaphore;
 
-        private int _maxRetryCount = 10;
+        private int _maxRetryCount = 20;
         private int _retryCount = 0;
 
         private int _countRequestExecutor = 0;
@@ -31,25 +32,39 @@ namespace PrimaryAggregatorService.Services
             _semaphore = new SemaphoreSlim (builderRequestScheduler.ParallelCount);
         }
 
-        public async List<T> Start()
+        public async Task<List<T>> Start()
         {
+            _taskQueuePrimaryProcessing = new();
+            _taskQueueSecondaryProcessing = new();
+            _resultRequests = new();
             _builderRequest.GetPlanRequests().ForEach(x => _taskQueuePrimaryProcessing.Add(x));
             while (_taskQueuePrimaryProcessing.Count > 0)
             {
                 await Execute();
-                if (!await CheckErrorsAndContinue(new TimeSpan(0, 0, 0, 5, 500)))
+                if (!await CheckErrorsAndContinue(new TimeSpan(0, 0, 0, 7, 500)))
                 {
                     _logger.LogWarning("Query plan failed");
-                    return new List<T> ();
+                    return new List<T>();
                 }
                 MergeQueue();
             }
+            return GetResult();
+        }
 
-            //нужен сервис десериализации JSON
+        private List<T> GetResult()
+        {
+            List<T> values = new List<T> ();
+            _resultRequests.ToList().ForEach(x => 
+            {
+                JToken jToken = JToken.Parse(x.Message);
+                values.AddRange(jToken.ToObject<List<T>>());//To do переделать
+            });
+            return values;
         }
 
         private async Task Execute()
         {
+            _countRequestExecutor = 1;
             while (_taskQueuePrimaryProcessing.Count > 0 && !_tokenSource.Token.IsCancellationRequested) 
             { 
                 await _semaphore.WaitAsync(_tokenSource.Token).ConfigureAwait(false);
@@ -119,7 +134,7 @@ namespace PrimaryAggregatorService.Services
             {
                 return await CheckHandlingCriticalErrors(error);
             }
-            await Task.Delay((error?.CountWait ?? 0) + 20);
+            await Task.Delay((error?.CountWaitMillisecond ?? 0) + 20);
             return true;
         }
         private async Task<bool> CheckHandlingCriticalErrors(SettingsSchedulerErrorSource settingsSchedulerErrorSource)
@@ -139,6 +154,7 @@ namespace PrimaryAggregatorService.Services
                 await Task.Delay(20);
 
             }
+            _taskQueueErrorProcessing = new BlockingCollection<SettingsSchedulerErrorSource>();
         }
 
         private void MergeQueue()
