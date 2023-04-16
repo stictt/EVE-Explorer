@@ -1,4 +1,7 @@
 using PrimaryAggregatorService.Infrastructure;
+using PrimaryAggregatorService.Infrastructure.Api;
+using PrimaryAggregatorService.Models.Api;
+using PrimaryAggregatorService.Services;
 using Serilog;
 using System.Configuration;
 
@@ -12,7 +15,6 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSettings(builder.Configuration);
 
-
 var logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .WriteTo.Console()
@@ -21,6 +23,8 @@ var logger = new LoggerConfiguration()
 builder.Services.AddSingleton(Log.Logger);
 
 var app = builder.Build();
+
+
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
