@@ -1,10 +1,13 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
 using PrimaryAggregatorService.Infrastructure.Api;
 using PrimaryAggregatorService.Infrastructure.Exceptions;
 using PrimaryAggregatorService.Infrastructure.Interface;
 using PrimaryAggregatorService.Models.Api;
 using System;
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 
 namespace PrimaryAggregatorService.Services
 {
@@ -12,10 +15,9 @@ namespace PrimaryAggregatorService.Services
 
     public class RequestApiScheduler<T>
     {
-        private BlockingCollection<BaseResponseHttp> _resultRequests = new ();
-        private BlockingCollection<IPlanRequest> _taskQueuePrimaryProcessing = new ();
-        private BlockingCollection<IPlanRequest> _taskQueueSecondaryProcessing = new();
-        private BlockingCollection<SettingsSchedulerErrorSource> _taskQueueErrorProcessing = new();
+        private Channel<BaseResponseHttp> _resultRequests = Channel.CreateUnbounded <BaseResponseHttp>();
+        Channel<IPlanRequest> _channelPlanRequest = Channel.CreateUnbounded<IPlanRequest>();
+        Channel<Task<BaseResponseHttp>> _channelResponse = Channel.CreateUnbounded<Task<BaseResponseHttp>>();
         private CancellationTokenSource _tokenSource = new ();
         private BuilderRequestScheduler _builderRequest;
         private ILogger _logger;
@@ -23,10 +25,11 @@ namespace PrimaryAggregatorService.Services
 
         private int _maxRetryCount = 20;
         private int _retryCount = 0;
-
         private int _countRequestExecutor = 0;
+        private bool isWait = false;
         public RequestApiScheduler(ILogger logger, BuilderRequestScheduler builderRequestScheduler) 
         {
+            _countRequestExecutor = builderRequestScheduler.ParallelCount;
             _logger = logger;
             _builderRequest = builderRequestScheduler;
             _semaphore = new SemaphoreSlim (builderRequestScheduler.ParallelCount);
@@ -34,135 +37,107 @@ namespace PrimaryAggregatorService.Services
 
         public async Task<List<T>> Start()
         {
-            _taskQueuePrimaryProcessing = new();
-            _taskQueueSecondaryProcessing = new();
-            _resultRequests = new();
-            _builderRequest.GetPlanRequests().ForEach(x => _taskQueuePrimaryProcessing.Add(x));
-            while (_taskQueuePrimaryProcessing.Count > 0)
-            {
-                await Execute();
-                if (!await CheckErrorsAndContinue(new TimeSpan(0, 0, 0, 7, 500)))
-                {
-                    _logger.LogWarning("Query plan failed");
-                    return new List<T>();
-                }
-                MergeQueue();
-            }
+            _builderRequest.GetPlanRequests()
+                   .ForEach(x => _channelPlanRequest.Writer.TryWrite(x));
+            ExecuteRequestPlan();
+            await ProcessResponse();
+            _logger.LogInformation("Количество ордеров {0}", _resultRequests.Reader.Count);
             return GetResult();
         }
 
         private List<T> GetResult()
         {
             List<T> values = new List<T> ();
-            _resultRequests.ToList().ForEach(x => 
+            while (_resultRequests.Reader.Count > 0)
             {
-                JToken jToken = JToken.Parse(x.Message);
-                values.AddRange(jToken.ToObject<List<T>>());//To do переделать
-            });
+                _resultRequests.Reader.TryRead(out var item);
+                JToken jToken = JToken.Parse(item.Message);
+                values.AddRange(jToken.ToObject<List<T>>());
+            }
+
             return values;
         }
 
-        private async Task Execute()
+        private async Task ExecuteRequestPlan()
         {
-            _countRequestExecutor = 1;
-            while (_taskQueuePrimaryProcessing.Count > 0 && !_tokenSource.Token.IsCancellationRequested) 
-            { 
+            while (!_tokenSource.Token.IsCancellationRequested)
+            {
+                if (!_channelPlanRequest.Reader.TryRead(out var request)) { await Task.Delay(20); continue; }
+
                 await _semaphore.WaitAsync(_tokenSource.Token).ConfigureAwait(false);
                 if (_tokenSource.Token.IsCancellationRequested) { return; }
+                var http = new BaseRequestExecutorApi(_logger, _builderRequest.CheckResponseAndThrow);
+                _channelResponse.Writer.TryWrite(http.Execute(request, _tokenSource.Token));
 
-                _taskQueuePrimaryProcessing.TryTake(out IPlanRequest request);
-                ExecuteRequest(request);
             }
         }
 
-        private void ExecuteRequest(IPlanRequest request)
+        private async Task ProcessResponse()
         {
-            var http = new BaseRequestExecutorApi(_logger, _builderRequest.CheckResponseAndThrow);
-            http.Execute(request, _tokenSource.Token)
-                .ContinueWith((x) =>
+            while (!_tokenSource.Token.IsCancellationRequested)
+            {
+                while (_channelResponse.Reader.Count > 0)
                 {
-                    if (x.IsCanceled)
+                    if (!_channelResponse.Reader.TryRead(out var response)) { await Task.Delay(20); continue; }
+
+                    Parallel.Invoke(async () =>
                     {
-                        _taskQueueSecondaryProcessing.TryAdd(request);
+                        await ProcessTaskResponse(response);
                         _countRequestExecutor = _semaphore.Release();
-                        return;
-                    }
-                    if (IsException(x, request)) 
-                    {
-                        _countRequestExecutor = _semaphore.Release();
-                        return; 
-                    }
+                    });
 
-                    _builderRequest.UpdateQueryPlan(x.Result, _taskQueueSecondaryProcessing);
-                    _resultRequests.TryAdd(x.Result);
-                    _countRequestExecutor = _semaphore.Release();
-
-                }, TaskContinuationOptions.RunContinuationsAsynchronously);
+                }
+                if (!IsContinue())
+                {
+                    return;
+                }
+            }
         }
 
-        private bool IsException(Task<BaseResponseHttp> response, IPlanRequest request)
+        private async Task ProcessTaskResponse(Task<BaseResponseHttp> responseHttp)
         {
-            if (response.IsFaulted
-                            &&
-                response.Exception?.InnerException is TransferHandlingErrorStatusCodeException exception)
+            try
             {
+                BaseResponseHttp result = await responseHttp.ConfigureAwait(false);
+                _builderRequest.UpdateQueryPlan(result)
+                    .ForEach(x => _channelPlanRequest.Writer.TryWrite(x));
+                _resultRequests.Writer.TryWrite(result);
+            }
+            catch(TransferHandlingErrorStatusCodeException exception)
+            {
+                var config = _builderRequest.ExpectedErrorHandler(_logger, exception);
+                if (config.CountWaitMillisecond > 0)
+                {
+                    _logger.LogWarning("Превышен лимит обращений, идет ожидание");
+                }
+                if (config.IsStop)
+                {
+                    _retryCount++;
+                }
+                _channelPlanRequest.Writer.TryWrite(exception.ResponseHttp.PlanRequest);
+            }
+            catch (Exception e)
+            {
+                _logger.LogInformation("Неожиданное исключение.");
+                _logger.LogInformation(e.Message);
+                _retryCount++;
+            }
+        }
 
-                _taskQueueSecondaryProcessing.TryAdd(request);
-                _taskQueueErrorProcessing.TryAdd(_builderRequest.ExpectedErrorHandler(_logger, exception));
+        private bool IsContinue()
+        {
+            if (_retryCount >= _maxRetryCount )
+            {
                 _tokenSource.Cancel();
-                return true;
+                return false;
             }
-            else if (response.IsFaulted && response.Exception != null)
+            if (_builderRequest.ExpectedAmountRequest() <= _resultRequests.Reader.Count 
+                && _semaphore.CurrentCount == _builderRequest.ParallelCount)
             {
-                _taskQueueSecondaryProcessing.TryAdd(request);
-                _logger.LogError(response.Exception.Message);
-                _taskQueueErrorProcessing.TryAdd(new SettingsSchedulerErrorSource() { IsStop = true });
                 _tokenSource.Cancel();
-                return true;
+                return false;
             }
-            return false;
-        }
-
-        private async Task<bool> CheckErrorsAndContinue(TimeSpan completionWaitDelay)
-        {
-            await WaitiCompletionOperations(completionWaitDelay);
-            _tokenSource = new CancellationTokenSource();
-            if (_taskQueueErrorProcessing.Count == 0) return true;
-            var error = _taskQueueErrorProcessing.FirstOrDefault();
-
-            if (error != null && error.IsStop)
-            {
-                return await CheckHandlingCriticalErrors(error);
-            }
-            await Task.Delay((error?.CountWaitMillisecond ?? 0) + 20);
             return true;
-        }
-        private async Task<bool> CheckHandlingCriticalErrors(SettingsSchedulerErrorSource settingsSchedulerErrorSource)
-        {
-            _retryCount++;
-            if (_maxRetryCount <= _retryCount) { return false; }
-            await Task.Delay(100* _retryCount);
-            _taskQueueErrorProcessing = new BlockingCollection<SettingsSchedulerErrorSource>();
-            return true;
-        }
-        private async Task WaitiCompletionOperations(TimeSpan timeSpan)
-        {
-            var time = DateTime.Now.Ticks;
-            while (_countRequestExecutor > 0)
-            {
-                if ((time + timeSpan.Ticks) < DateTime.Now.Ticks) { return; }
-                await Task.Delay(20);
-
-            }
-            _taskQueueErrorProcessing = new BlockingCollection<SettingsSchedulerErrorSource>();
-        }
-
-        private void MergeQueue()
-        {
-            while (_taskQueueSecondaryProcessing.TryTake(out var item))
-            {
-                _taskQueuePrimaryProcessing.TryAdd(item);
-            }
         }
     }
 }

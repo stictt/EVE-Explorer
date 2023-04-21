@@ -15,7 +15,8 @@ namespace PrimaryAggregatorService.Infrastructure.Interface
             SettingsSchedulerErrorSource> ExpectedErrorHandler { get; protected set; }
         public abstract List<IPlanRequest> GetPlanRequests();
 
-        public abstract void UpdateQueryPlan(BaseResponseHttp responseHttp, BlockingCollection<IPlanRequest> planRequests);
+        public abstract List<IPlanRequest> UpdateQueryPlan(BaseResponseHttp responseHttp);
 
+        public abstract int ExpectedAmountRequest();
     }
 }

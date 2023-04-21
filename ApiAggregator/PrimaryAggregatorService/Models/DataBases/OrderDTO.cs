@@ -1,10 +1,17 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Newtonsoft.Json;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Security.Policy;
 
 namespace PrimaryAggregatorService.Models.DataBases
 {
-    public class OrderDTO
+    [Index(nameof(TypeId), nameof(PackageDate))]
+    [Index(nameof(SystemId))]
+    [Index(nameof(LocationId))]
+    public class OrderDTO 
     {
+        public int Id { get; set; }
         public long Duration { get; set; }
         public bool IsBuyOrder { get; set; }
         public DateTimeOffset Issued { get; set; }
@@ -14,7 +21,6 @@ namespace PrimaryAggregatorService.Models.DataBases
         public double Price { get; set; }
         public RangeOrderMarket Range { get; set; }
         public long SystemId { get; set; }
-        [Index("IX_Orders_TypeId_Date")]
         public long TypeId { get; set; }
         public long VolumeRemain { get; set; }
         public long VolumeTotal { get; set; }

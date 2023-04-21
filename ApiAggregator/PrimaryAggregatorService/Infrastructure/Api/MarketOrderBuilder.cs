@@ -13,8 +13,13 @@ namespace PrimaryAggregatorService.Infrastructure.Api
     {
         private static string Api = @"https://esi.evetech.net/latest/markets/{0}/orders/?datasource=tranquility&order_type=all&page={1}";
         private List<int> _marketOrders = new List<int>();
-        public MarketOrderBuilder(int parallelCount,List<int> regionsId) 
+        ILoggerFactory _loggerFactory;
+        ILogger _logger;
+        private int _orderCount = 0;
+        public MarketOrderBuilder(int parallelCount,List<int> regionsId, ILoggerFactory loggerFactory) 
         {
+            _loggerFactory = loggerFactory;
+            _logger = _loggerFactory.CreateLogger<MarketOrderBuilder>();
             ParallelCount = parallelCount;
             CheckResponseAndThrow += CheckResponseAndThrowHandler;
             ExpectedErrorHandler += ErrorHandler;
@@ -36,14 +41,17 @@ namespace PrimaryAggregatorService.Infrastructure.Api
             return result;
         }
 
-        public override void UpdateQueryPlan(BaseResponseHttp responseHttp, BlockingCollection<IPlanRequest> planRequests)
+        public override List<IPlanRequest> UpdateQueryPlan(BaseResponseHttp responseHttp)
         {
             int page = GetNumberPage(responseHttp);
+            List<IPlanRequest> planRequests = new List<IPlanRequest>();
 
-            if (page <= 1 ){ return; }
-            if (((PlanRequestMarketApi)responseHttp.PlanRequest).Page > 1) { return; }
+            if (page <= 1 ){ return new(); }
+            if (((PlanRequestMarketApi)responseHttp.PlanRequest).Page > 1) { return new(); }
+            _logger.LogInformation("Count page Plan {0}", page);
+            _orderCount = _orderCount + page;
             Enumerable.Range(2, page - 1)
-                .Select(x => new PlanRequestMarketApi()
+                .Select(x =>  new PlanRequestMarketApi()
                 {
                     Page = x,
                     PatternURL = Api,
@@ -52,8 +60,9 @@ namespace PrimaryAggregatorService.Infrastructure.Api
                 .ToList()
                 .ForEach(x =>
                 {
-                    planRequests.TryAdd(x);
+                    planRequests.Add(x);
                 });
+            return planRequests;
         }
         private SettingsSchedulerErrorSource ErrorHandler (ILogger logger,
             TransferHandlingErrorStatusCodeException transferHandlingError)
@@ -112,6 +121,11 @@ namespace PrimaryAggregatorService.Infrastructure.Api
                     baseResponse.Error = true;
                     throw new TransferHandlingErrorStatusCodeException(baseResponse);
             }
+        }
+
+        public override int ExpectedAmountRequest()
+        {
+            return _orderCount;
         }
     }
 }
