@@ -1,6 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
+using PrimaryAggregatorService.Infrastructure;
 using PrimaryAggregatorService.Infrastructure.Api;
 using PrimaryAggregatorService.Infrastructure.Exceptions;
 using PrimaryAggregatorService.Infrastructure.Interface;
@@ -8,6 +8,7 @@ using PrimaryAggregatorService.Models.Api;
 using System;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using System.Threading.RateLimiting;
 
 namespace PrimaryAggregatorService.Services
 {
@@ -15,129 +16,156 @@ namespace PrimaryAggregatorService.Services
 
     public class RequestApiScheduler<T>
     {
-        private Channel<BaseResponseHttp> _resultRequests = Channel.CreateUnbounded <BaseResponseHttp>();
-        Channel<IPlanRequest> _channelPlanRequest = Channel.CreateUnbounded<IPlanRequest>();
-        Channel<Task<BaseResponseHttp>> _channelResponse = Channel.CreateUnbounded<Task<BaseResponseHttp>>();
-        private CancellationTokenSource _tokenSource = new ();
+        private Channel<BaseResponseHttp> _resultRequests = Channel.CreateUnbounded<BaseResponseHttp>();
+        private Dictionary<IPlanRequest, Task<BaseResponseHttp>> _mapRequest = new();
+        private CancellationTokenSource _tokenSource = new();
         private BuilderRequestScheduler _builderRequest;
+        private RateLimiter _limiter;
         private ILogger _logger;
-        private readonly SemaphoreSlim _semaphore;
+        private ILoggerFactory _iLoggerFactory;
 
-        private int _maxRetryCount = 20;
+        private int _maxRetryCount = 5;
         private int _retryCount = 0;
-        private int _countRequestExecutor = 0;
-        private bool isWait = false;
-        public RequestApiScheduler(ILogger logger, BuilderRequestScheduler builderRequestScheduler) 
+        private bool IsError = false;
+
+        public RequestApiScheduler(ILoggerFactory loggerFactory, BuilderRequestScheduler builderRequestScheduler)
         {
-            _countRequestExecutor = builderRequestScheduler.ParallelCount;
-            _logger = logger;
+            _logger = loggerFactory.CreateLogger<RequestApiScheduler<T>>();
+            _iLoggerFactory = loggerFactory;
             _builderRequest = builderRequestScheduler;
-            _semaphore = new SemaphoreSlim (builderRequestScheduler.ParallelCount);
+            _limiter = builderRequestScheduler.GetLimiter();
         }
 
         public async Task<List<T>> Start()
         {
             _builderRequest.GetPlanRequests()
-                   .ForEach(x => _channelPlanRequest.Writer.TryWrite(x));
-            ExecuteRequestPlan();
-            await ProcessResponse();
+                 .ForEach(x => _mapRequest.Add(x,null));
+            Console.WriteLine("Start");
+            while (!_tokenSource.IsCancellationRequested)
+            {
+                await ExecuteRequestPlan();
+                await ExecuteResponses();
+                if (await ErrorChecking()) 
+                { 
+                    _resultRequests = Channel.CreateUnbounded<BaseResponseHttp>();
+                    _logger.LogWarning("Request operation failed - {0:f}",DateTime.Now);
+                    break;
+                }
+                CheckingСompleted();
+            }
             _logger.LogInformation("Количество ордеров {0}", _resultRequests.Reader.Count);
             return GetResult();
         }
 
         private List<T> GetResult()
         {
-            List<T> values = new List<T> ();
+            List<T> values = new List<T>();
             while (_resultRequests.Reader.Count > 0)
             {
                 _resultRequests.Reader.TryRead(out var item);
                 JToken jToken = JToken.Parse(item.Message);
                 values.AddRange(jToken.ToObject<List<T>>());
             }
-
             return values;
         }
 
         private async Task ExecuteRequestPlan()
         {
-            while (!_tokenSource.Token.IsCancellationRequested)
+            foreach (var item in _mapRequest.ToList())
             {
-                if (!_channelPlanRequest.Reader.TryRead(out var request)) { await Task.Delay(20); continue; }
-
-                await _semaphore.WaitAsync(_tokenSource.Token).ConfigureAwait(false);
-                if (_tokenSource.Token.IsCancellationRequested) { return; }
-                var http = new BaseRequestExecutorApi(_logger, _builderRequest.CheckResponseAndThrow);
-                _channelResponse.Writer.TryWrite(http.Execute(request, _tokenSource.Token));
-
+                await _limiter.AcquireAsync(1,_tokenSource.Token);
+                if (_tokenSource.IsCancellationRequested) { return; }
+                var http = new BaseRequestExecutorApi(_iLoggerFactory, _builderRequest.CheckResponseAndThrow);
+                _mapRequest[item.Key] = http.Execute(item.Key, _tokenSource.Token);
             }
         }
 
-        private async Task ProcessResponse()
+        private void CheckingСompleted()
         {
-            while (!_tokenSource.Token.IsCancellationRequested)
+            if (_mapRequest.Count == 0)
             {
-                while (_channelResponse.Reader.Count > 0)
-                {
-                    if (!_channelResponse.Reader.TryRead(out var response)) { await Task.Delay(20); continue; }
-
-                    Parallel.Invoke(async () =>
-                    {
-                        await ProcessTaskResponse(response);
-                        _countRequestExecutor = _semaphore.Release();
-                    });
-
-                }
-                if (!IsContinue())
-                {
-                    return;
-                }
+                _tokenSource.Cancel();
             }
         }
 
-        private async Task ProcessTaskResponse(Task<BaseResponseHttp> responseHttp)
+        private async Task<bool> ErrorChecking()
         {
+            if (_retryCount >= _maxRetryCount)
+            {
+                return true;
+            }
+            if (IsError)
+            {
+                await Task.Delay(++_retryCount * 200);
+                IsError = false;
+            }
+            return false;
+        }
+
+        private async Task ExecuteResponses()
+        {
+            int countExeption = 0;
+            Dictionary<IPlanRequest, Task<BaseResponseHttp>> repeatRequestMap = new();
+            foreach (var item in _mapRequest)
+            {
+                BaseResponseHttp result;
+                try
+                {
+                    result = await ProcessResponseAsync(item.Value);
+                    await _resultRequests.Writer.WriteAsync(result);
+                    _builderRequest.UpdateQueryPlan(result)
+                        .ForEach(x => repeatRequestMap.Add(x, null));
+                }
+                catch 
+                {
+                    repeatRequestMap.Add(item.Key, null);
+                    countExeption++; 
+                }
+            }
+            if (countExeption >= (_mapRequest.Count/100)*50) // Checking that more than 50%
+            {
+                IsError = true;
+            }
+            _mapRequest = repeatRequestMap;
+        }
+
+        private async Task<BaseResponseHttp> ProcessResponseAsync(Task<BaseResponseHttp> responseHttp)
+        {
+
+            TaskCompletionSource<BaseResponseHttp> errorResult = new TaskCompletionSource<BaseResponseHttp>();
             try
             {
-                BaseResponseHttp result = await responseHttp.ConfigureAwait(false);
-                _builderRequest.UpdateQueryPlan(result)
-                    .ForEach(x => _channelPlanRequest.Writer.TryWrite(x));
-                _resultRequests.Writer.TryWrite(result);
+                return await responseHttp;
             }
-            catch(TransferHandlingErrorStatusCodeException exception)
+            catch (TransferHandlingErrorStatusCodeException exception)
             {
                 var config = _builderRequest.ExpectedErrorHandler(_logger, exception);
-                if (config.CountWaitMillisecond > 0)
-                {
-                    _logger.LogWarning("Превышен лимит обращений, идет ожидание");
-                }
-                if (config.IsStop)
-                {
-                    _retryCount++;
-                }
-                _channelPlanRequest.Writer.TryWrite(exception.ResponseHttp.PlanRequest);
+                if (config.CountWaitMillisecond > 0) { _logger.LogWarning("Request limit exceeded"); }
+                if (config.IsStop) { _logger.LogWarning("Undefined error, the server is not responding."); }
+
+                errorResult.SetCanceled();
+                return await errorResult.Task;
+            }
+            catch (TaskCanceledException e)
+            {
+                _logger.LogWarning("Request timeout exceeded.");
+                errorResult.SetCanceled();
+                return await errorResult.Task;
+            }
+            catch (OperationCanceledException e)
+            {
+                _logger.LogWarning("Cancel operation.");
+                errorResult.SetCanceled();
+                return await errorResult.Task;
             }
             catch (Exception e)
             {
-                _logger.LogInformation("Неожиданное исключение.");
-                _logger.LogInformation(e.Message);
-                _retryCount++;
-            }
-        }
+                _logger.LogError("Unexpected Exception {0}:{1:f}", e.GetType().ToString(), DateTime.Now);
+                _logger.LogError(e.Message);
 
-        private bool IsContinue()
-        {
-            if (_retryCount >= _maxRetryCount )
-            {
-                _tokenSource.Cancel();
-                return false;
+                errorResult.SetException(e);
+                return await errorResult.Task;
             }
-            if (_builderRequest.ExpectedAmountRequest() <= _resultRequests.Reader.Count 
-                && _semaphore.CurrentCount == _builderRequest.ParallelCount)
-            {
-                _tokenSource.Cancel();
-                return false;
-            }
-            return true;
         }
     }
 }

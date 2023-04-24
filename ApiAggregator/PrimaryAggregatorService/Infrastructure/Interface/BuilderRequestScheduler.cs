@@ -1,12 +1,12 @@
 ﻿using PrimaryAggregatorService.Infrastructure.Exceptions;
 using PrimaryAggregatorService.Models.Api;
 using System.Collections.Concurrent;
+using System.Threading.RateLimiting;
 
 namespace PrimaryAggregatorService.Infrastructure.Interface
 {
     public abstract class BuilderRequestScheduler
     {
-        public int ParallelCount { get; protected set; }
         public Action<BaseResponseHttp, ILogger> CheckResponseAndThrow { get; protected set; }
 
         public Func<
@@ -18,5 +18,6 @@ namespace PrimaryAggregatorService.Infrastructure.Interface
         public abstract List<IPlanRequest> UpdateQueryPlan(BaseResponseHttp responseHttp);
 
         public abstract int ExpectedAmountRequest();
+        public abstract RateLimiter GetLimiter();
     }
 }

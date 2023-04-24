@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Reflection;
 using System.Reflection.PortableExecutable;
+using System.Threading.RateLimiting;
 
 namespace PrimaryAggregatorService.Infrastructure.Api
 {
@@ -13,17 +14,30 @@ namespace PrimaryAggregatorService.Infrastructure.Api
     {
         private static string Api = @"https://esi.evetech.net/latest/markets/{0}/orders/?datasource=tranquility&order_type=all&page={1}";
         private List<int> _marketOrders = new List<int>();
-        ILoggerFactory _loggerFactory;
-        ILogger _logger;
+        private ILoggerFactory _loggerFactory;
+        private ILogger _logger;
         private int _orderCount = 0;
+        private int _parallelCount = 0;
+        private RateLimiter _limiter;
         public MarketOrderBuilder(int parallelCount,List<int> regionsId, ILoggerFactory loggerFactory) 
         {
             _loggerFactory = loggerFactory;
             _logger = _loggerFactory.CreateLogger<MarketOrderBuilder>();
-            ParallelCount = parallelCount;
+            _parallelCount = parallelCount;
             CheckResponseAndThrow += CheckResponseAndThrowHandler;
             ExpectedErrorHandler += ErrorHandler;
             _marketOrders = regionsId;
+
+            _limiter = new SlidingWindowRateLimiter(
+                new SlidingWindowRateLimiterOptions()
+                {
+                    Window = TimeSpan.FromSeconds(1),
+                    SegmentsPerWindow = 10,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 1,
+                    PermitLimit = _parallelCount,
+                    AutoReplenishment = true
+                });
         }
 
         public override List<IPlanRequest> GetPlanRequests()
@@ -126,6 +140,11 @@ namespace PrimaryAggregatorService.Infrastructure.Api
         public override int ExpectedAmountRequest()
         {
             return _orderCount;
+        }
+
+        public override RateLimiter GetLimiter()
+        {
+            return _limiter;
         }
     }
 }
