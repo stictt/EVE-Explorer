@@ -16,7 +16,7 @@ namespace PrimaryAggregatorService.Services
 
     public class RequestApiScheduler<T>
     {
-        private Channel<BaseResponseHttp> _resultRequests = Channel.CreateUnbounded<BaseResponseHttp>();
+        private List<BaseResponseHttp> _resultRequests = new();
         private Dictionary<IPlanRequest, Task<BaseResponseHttp>> _mapRequest = new();
         private CancellationTokenSource _tokenSource = new();
         private BuilderRequestScheduler _builderRequest;
@@ -47,25 +47,24 @@ namespace PrimaryAggregatorService.Services
                 await ExecuteResponses();
                 if (await ErrorChecking()) 
                 { 
-                    _resultRequests = Channel.CreateUnbounded<BaseResponseHttp>();
+                    _resultRequests.Clear();
                     _logger.LogWarning("Request operation failed - {0:f}",DateTime.Now);
                     break;
                 }
                 CheckingСompleted();
             }
-            _logger.LogInformation("Количество ордеров {0}", _resultRequests.Reader.Count);
+            _logger.LogInformation("Количество ордеров {0}", _resultRequests.Count);
             return GetResult();
         }
 
         private List<T> GetResult()
         {
             List<T> values = new List<T>();
-            while (_resultRequests.Reader.Count > 0)
+            _resultRequests.ForEach(x =>
             {
-                _resultRequests.Reader.TryRead(out var item);
-                JToken jToken = JToken.Parse(item.Message);
+                JToken jToken = JToken.Parse(x.Message);
                 values.AddRange(jToken.ToObject<List<T>>());
-            }
+            });
             return values;
         }
 
@@ -88,7 +87,7 @@ namespace PrimaryAggregatorService.Services
             }
         }
 
-        private async Task<bool> ErrorChecking()
+        private async ValueTask<bool> ErrorChecking()
         {
             if (_retryCount >= _maxRetryCount)
             {
@@ -112,7 +111,7 @@ namespace PrimaryAggregatorService.Services
                 try
                 {
                     result = await ProcessResponseAsync(item.Value);
-                    await _resultRequests.Writer.WriteAsync(result);
+                    _resultRequests.Add(result);
                     _builderRequest.UpdateQueryPlan(result)
                         .ForEach(x => repeatRequestMap.Add(x, null));
                 }
