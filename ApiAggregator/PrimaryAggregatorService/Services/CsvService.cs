@@ -1,7 +1,4 @@
-﻿using CsvHelper;
-using PrimaryAggregatorService.Infrastructure;
-using PrimaryAggregatorService.Infrastructure.Exceptions;
-using PrimaryAggregatorService.Infrastructure.Interface;
+﻿using PrimaryAggregatorService.Infrastructure;
 using PrimaryAggregatorService.Models.ResourceDTO;
 
 namespace PrimaryAggregatorService.Services

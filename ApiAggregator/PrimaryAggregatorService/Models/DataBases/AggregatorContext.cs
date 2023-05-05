@@ -5,12 +5,13 @@ namespace PrimaryAggregatorService.Models.DataBases
 {
     public class AggregatorContext : DbContext
     {
+        public string Conection { get; private set; }
         public AggregatorContext(DbContextOptions<AggregatorContext> options) : base(options)
         {
-            //Database.EnsureCreated();   // гарантируем, что БД создана
             Database.Migrate();
             this.SaveChanges();
         }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder

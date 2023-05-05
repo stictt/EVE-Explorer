@@ -1,13 +1,8 @@
-﻿using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
-using PrimaryAggregatorService.Infrastructure;
+﻿using Newtonsoft.Json.Linq;
 using PrimaryAggregatorService.Infrastructure.Api;
 using PrimaryAggregatorService.Infrastructure.Exceptions;
 using PrimaryAggregatorService.Infrastructure.Interface;
 using PrimaryAggregatorService.Models.Api;
-using System;
-using System.Collections.Concurrent;
-using System.Threading.Channels;
 using System.Threading.RateLimiting;
 
 namespace PrimaryAggregatorService.Services
@@ -40,7 +35,6 @@ namespace PrimaryAggregatorService.Services
         {
             _builderRequest.GetPlanRequests()
                  .ForEach(x => _mapRequest.Add(x,null));
-            Console.WriteLine("Start");
             while (!_tokenSource.IsCancellationRequested)
             {
                 await ExecuteRequestPlan();
@@ -53,7 +47,7 @@ namespace PrimaryAggregatorService.Services
                 }
                 CheckingСompleted();
             }
-            _logger.LogInformation("Количество ордеров {0}", _resultRequests.Count);
+            _logger.LogInformation("Result count orders page {0}", _resultRequests.Count);
             return GetResult();
         }
 
@@ -63,7 +57,7 @@ namespace PrimaryAggregatorService.Services
             _resultRequests.ForEach(x =>
             {
                 JToken jToken = JToken.Parse(x.Message);
-                values.AddRange(jToken.ToObject<List<T>>());
+                values.AddRange(jToken.ToObject<List<T>>()); //To DO переделать 
             });
             return values;
         }
