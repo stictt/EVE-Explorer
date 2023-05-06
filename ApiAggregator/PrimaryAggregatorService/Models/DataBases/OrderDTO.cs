@@ -1,43 +1,27 @@
-﻿using Newtonsoft.Json;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Newtonsoft.Json;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Security.Policy;
 
-namespace PrimaryAggregatorService.Models.Api
+namespace PrimaryAggregatorService.Models.DataBases
 {
-    public class OrderApi
+    [Index(nameof(TypeId), nameof(PackageDate))]
+    public class OrderDTO 
     {
-        [JsonProperty("duration")]
+        public int Id { get; set; }
         public short Duration { get; set; }
-
-        [JsonProperty("is_buy_order")]
         public bool IsBuyOrder { get; set; }
-
-        [JsonProperty("issued")]
         public DateTime Issued { get; set; }
-
-        [JsonProperty("location_id")]
         public long LocationId { get; set; }
-
-        [JsonProperty("min_volume")]
         public int MinVolume { get; set; }
-
-        [JsonProperty("order_id")]
         public long OrderId { get; set; }
-
-        [JsonProperty("price")]
         public double Price { get; set; }
-
-        [JsonProperty("range")]
         public RangeOrderMarket Range { get; set; }
-
-        [JsonProperty("system_id")]
         public int SystemId { get; set; }
-
-        [JsonProperty("type_id")]
         public int TypeId { get; set; }
-
-        [JsonProperty("volume_remain")]
         public long VolumeRemain { get; set; }
-
-        [JsonProperty("volume_total")]
         public long VolumeTotal { get; set; }
+        public DateTime PackageDate { get; set; }
     }
 }

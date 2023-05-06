@@ -1,8 +1,5 @@
-﻿
-using PrimaryAggregatorService.Models.ResourceDTO;
-using System;
+﻿using PrimaryAggregatorService.Models.ResourceDTO;
 using System.Globalization;
-using System.Text.RegularExpressions;
 
 namespace PrimaryAggregatorService.Services
 {

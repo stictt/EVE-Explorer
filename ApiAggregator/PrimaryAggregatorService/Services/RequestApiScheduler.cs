@@ -3,8 +3,7 @@ using PrimaryAggregatorService.Infrastructure.Api;
 using PrimaryAggregatorService.Infrastructure.Exceptions;
 using PrimaryAggregatorService.Infrastructure.Interface;
 using PrimaryAggregatorService.Models.Api;
-using System;
-using System.Collections.Concurrent;
+using System.Threading.RateLimiting;
 
 namespace PrimaryAggregatorService.Services
 {
@@ -12,156 +11,153 @@ namespace PrimaryAggregatorService.Services
 
     public class RequestApiScheduler<T>
     {
-        private BlockingCollection<BaseResponseHttp> _resultRequests = new ();
-        private BlockingCollection<IPlanRequest> _taskQueuePrimaryProcessing = new ();
-        private BlockingCollection<IPlanRequest> _taskQueueSecondaryProcessing = new();
-        private BlockingCollection<SettingsSchedulerErrorSource> _taskQueueErrorProcessing = new();
-        private CancellationTokenSource _tokenSource = new ();
+        private List<BaseResponseHttp> _resultRequests = new();
+        private Dictionary<IPlanRequest, Task<BaseResponseHttp>> _mapRequest = new();
+        private CancellationTokenSource _tokenSource = new();
         private BuilderRequestScheduler _builderRequest;
+        private RateLimiter _limiter;
         private ILogger _logger;
-        private readonly SemaphoreSlim _semaphore;
+        private ILoggerFactory _iLoggerFactory;
 
-        private int _maxRetryCount = 20;
+        private int _maxRetryCount = 5;
         private int _retryCount = 0;
+        private bool IsError = false;
 
-        private int _countRequestExecutor = 0;
-        public RequestApiScheduler(ILogger logger, BuilderRequestScheduler builderRequestScheduler) 
+        public RequestApiScheduler(ILoggerFactory loggerFactory, BuilderRequestScheduler builderRequestScheduler)
         {
-            _logger = logger;
+            _logger = loggerFactory.CreateLogger<RequestApiScheduler<T>>();
+            _iLoggerFactory = loggerFactory;
             _builderRequest = builderRequestScheduler;
-            _semaphore = new SemaphoreSlim (builderRequestScheduler.ParallelCount);
+            _limiter = builderRequestScheduler.GetLimiter();
         }
 
         public async Task<List<T>> Start()
         {
-            _taskQueuePrimaryProcessing = new();
-            _taskQueueSecondaryProcessing = new();
-            _resultRequests = new();
-            _builderRequest.GetPlanRequests().ForEach(x => _taskQueuePrimaryProcessing.Add(x));
-            while (_taskQueuePrimaryProcessing.Count > 0)
+            _builderRequest.GetPlanRequests()
+                 .ForEach(x => _mapRequest.Add(x,null));
+            while (!_tokenSource.IsCancellationRequested)
             {
-                await Execute();
-                if (!await CheckErrorsAndContinue(new TimeSpan(0, 0, 0, 7, 500)))
-                {
-                    _logger.LogWarning("Query plan failed");
-                    return new List<T>();
+                await ExecuteRequestPlan();
+                await ExecuteResponses();
+                if (await ErrorChecking()) 
+                { 
+                    _resultRequests.Clear();
+                    _logger.LogWarning("Request operation failed - {0:f}",DateTime.Now);
+                    break;
                 }
-                MergeQueue();
+                CheckingСompleted();
             }
+            _logger.LogInformation("Result count orders page {0}", _resultRequests.Count);
             return GetResult();
         }
 
         private List<T> GetResult()
         {
-            List<T> values = new List<T> ();
-            _resultRequests.ToList().ForEach(x => 
+            List<T> values = new List<T>();
+            _resultRequests.ForEach(x =>
             {
                 JToken jToken = JToken.Parse(x.Message);
-                values.AddRange(jToken.ToObject<List<T>>());//To do переделать
+                values.AddRange(jToken.ToObject<List<T>>()); //To DO переделать 
             });
             return values;
         }
 
-        private async Task Execute()
+        private async Task ExecuteRequestPlan()
         {
-            _countRequestExecutor = 1;
-            while (_taskQueuePrimaryProcessing.Count > 0 && !_tokenSource.Token.IsCancellationRequested) 
-            { 
-                await _semaphore.WaitAsync(_tokenSource.Token).ConfigureAwait(false);
-                if (_tokenSource.Token.IsCancellationRequested) { return; }
-
-                _taskQueuePrimaryProcessing.TryTake(out IPlanRequest request);
-                ExecuteRequest(request);
+            foreach (var item in _mapRequest.ToList())
+            {
+                await _limiter.AcquireAsync(1,_tokenSource.Token);
+                if (_tokenSource.IsCancellationRequested) { return; }
+                var http = new BaseRequestExecutorApi(_iLoggerFactory, _builderRequest.CheckResponseAndThrow);
+                _mapRequest[item.Key] = http.Execute(item.Key, _tokenSource.Token);
             }
         }
 
-        private void ExecuteRequest(IPlanRequest request)
+        private void CheckingСompleted()
         {
-            var http = new BaseRequestExecutorApi(_logger, _builderRequest.CheckResponseAndThrow);
-            http.Execute(request, _tokenSource.Token)
-                .ContinueWith((x) =>
-                {
-                    if (x.IsCanceled)
-                    {
-                        _taskQueueSecondaryProcessing.TryAdd(request);
-                        _countRequestExecutor = _semaphore.Release();
-                        return;
-                    }
-                    if (IsException(x, request)) 
-                    {
-                        _countRequestExecutor = _semaphore.Release();
-                        return; 
-                    }
-
-                    _builderRequest.UpdateQueryPlan(x.Result, _taskQueueSecondaryProcessing);
-                    _resultRequests.TryAdd(x.Result);
-                    _countRequestExecutor = _semaphore.Release();
-
-                }, TaskContinuationOptions.RunContinuationsAsynchronously);
+            if (_mapRequest.Count == 0)
+            {
+                _tokenSource.Cancel();
+            }
         }
 
-        private bool IsException(Task<BaseResponseHttp> response, IPlanRequest request)
+        private async ValueTask<bool> ErrorChecking()
         {
-            if (response.IsFaulted
-                            &&
-                response.Exception?.InnerException is TransferHandlingErrorStatusCodeException exception)
+            if (_retryCount >= _maxRetryCount)
             {
-
-                _taskQueueSecondaryProcessing.TryAdd(request);
-                _taskQueueErrorProcessing.TryAdd(_builderRequest.ExpectedErrorHandler(_logger, exception));
-                _tokenSource.Cancel();
                 return true;
             }
-            else if (response.IsFaulted && response.Exception != null)
+            if (IsError)
             {
-                _taskQueueSecondaryProcessing.TryAdd(request);
-                _logger.LogError(response.Exception.Message);
-                _taskQueueErrorProcessing.TryAdd(new SettingsSchedulerErrorSource() { IsStop = true });
-                _tokenSource.Cancel();
-                return true;
+                await Task.Delay(++_retryCount * 200);
+                IsError = false;
             }
             return false;
         }
 
-        private async Task<bool> CheckErrorsAndContinue(TimeSpan completionWaitDelay)
+        private async Task ExecuteResponses()
         {
-            await WaitiCompletionOperations(completionWaitDelay);
-            _tokenSource = new CancellationTokenSource();
-            if (_taskQueueErrorProcessing.Count == 0) return true;
-            var error = _taskQueueErrorProcessing.FirstOrDefault();
-
-            if (error != null && error.IsStop)
+            int countExeption = 0;
+            Dictionary<IPlanRequest, Task<BaseResponseHttp>> repeatRequestMap = new();
+            foreach (var item in _mapRequest)
             {
-                return await CheckHandlingCriticalErrors(error);
+                BaseResponseHttp result;
+                try
+                {
+                    result = await ProcessResponseAsync(item.Value);
+                    _resultRequests.Add(result);
+                    _builderRequest.UpdateQueryPlan(result)
+                        .ForEach(x => repeatRequestMap.Add(x, null));
+                }
+                catch 
+                {
+                    repeatRequestMap.Add(item.Key, null);
+                    countExeption++; 
+                }
             }
-            await Task.Delay((error?.CountWaitMillisecond ?? 0) + 20);
-            return true;
-        }
-        private async Task<bool> CheckHandlingCriticalErrors(SettingsSchedulerErrorSource settingsSchedulerErrorSource)
-        {
-            _retryCount++;
-            if (_maxRetryCount <= _retryCount) { return false; }
-            await Task.Delay(100* _retryCount);
-            _taskQueueErrorProcessing = new BlockingCollection<SettingsSchedulerErrorSource>();
-            return true;
-        }
-        private async Task WaitiCompletionOperations(TimeSpan timeSpan)
-        {
-            var time = DateTime.Now.Ticks;
-            while (_countRequestExecutor > 0)
+            if (countExeption >= (_mapRequest.Count/100)*50) // Checking that more than 50%
             {
-                if ((time + timeSpan.Ticks) < DateTime.Now.Ticks) { return; }
-                await Task.Delay(20);
-
+                IsError = true;
             }
-            _taskQueueErrorProcessing = new BlockingCollection<SettingsSchedulerErrorSource>();
+            _mapRequest = repeatRequestMap;
         }
 
-        private void MergeQueue()
+        private async Task<BaseResponseHttp> ProcessResponseAsync(Task<BaseResponseHttp> responseHttp)
         {
-            while (_taskQueueSecondaryProcessing.TryTake(out var item))
+
+            TaskCompletionSource<BaseResponseHttp> errorResult = new TaskCompletionSource<BaseResponseHttp>();
+            try
             {
-                _taskQueuePrimaryProcessing.TryAdd(item);
+                return await responseHttp;
+            }
+            catch (TransferHandlingErrorStatusCodeException exception)
+            {
+                var config = _builderRequest.ExpectedErrorHandler(_logger, exception);
+                if (config.CountWaitMillisecond > 0) { _logger.LogWarning("Request limit exceeded"); }
+                if (config.IsStop) { _logger.LogWarning("Undefined error, the server is not responding."); }
+
+                errorResult.SetCanceled();
+                return await errorResult.Task;
+            }
+            catch (TaskCanceledException e)
+            {
+                _logger.LogWarning("Request timeout exceeded.");
+                errorResult.SetCanceled();
+                return await errorResult.Task;
+            }
+            catch (OperationCanceledException e)
+            {
+                _logger.LogWarning("Cancel operation.");
+                errorResult.SetCanceled();
+                return await errorResult.Task;
+            }
+            catch (Exception e)
+            {
+                _logger.LogError("Unexpected Exception {0}:{1:f}", e.GetType().ToString(), DateTime.Now);
+                _logger.LogError(e.Message);
+
+                errorResult.SetException(e);
+                return await errorResult.Task;
             }
         }
     }

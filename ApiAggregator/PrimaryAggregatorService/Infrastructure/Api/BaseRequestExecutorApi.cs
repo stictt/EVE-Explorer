@@ -10,10 +10,10 @@ namespace PrimaryAggregatorService.Infrastructure.Api
         private Action<BaseResponseHttp, ILogger> _сheckResponseAndThrow;
         private ILogger _logger;
 
-        public BaseRequestExecutorApi(ILogger logger,Action<BaseResponseHttp, ILogger> сheckResponseAndThrow) 
+        public BaseRequestExecutorApi(ILoggerFactory logger, Action<BaseResponseHttp, ILogger> сheckResponseAndThrow) 
         {
             _httpClient = new HttpClient();
-            _logger = logger;
+            _logger = logger.CreateLogger<BaseRequestExecutorApi>();
             _сheckResponseAndThrow = сheckResponseAndThrow;
         }
 
