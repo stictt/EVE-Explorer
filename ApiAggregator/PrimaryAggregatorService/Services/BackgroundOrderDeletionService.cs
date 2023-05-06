@@ -1,4 +1,5 @@
-﻿using PrimaryAggregatorService.Infrastructure;
+﻿using Microsoft.Extensions.Logging;
+using PrimaryAggregatorService.Infrastructure;
 using PrimaryAggregatorService.Models;
 using System.Threading.RateLimiting;
 
@@ -33,7 +34,15 @@ namespace PrimaryAggregatorService.Services
                 await _limiter.AcquireAsync(1, token);
                 if (token.IsCancellationRequested) { return; }
 
-                await _repository.DeleteOldOrders();//проверку на исключения
+                try
+                {
+                    await _repository.DeleteOldOrders();
+                }
+                catch(Exception ex)
+                {
+                    _logger.LogError(@"{0:f} - indefinite exclusion.", DateTime.Now);
+                    _logger.LogError(ex.Message);
+                }
             }
         }
     }
