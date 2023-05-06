@@ -57,7 +57,7 @@ namespace PrimaryAggregatorService.Infrastructure
             using var conn = new NpgsqlConnection(_connectionString.DefaultConnection);
             conn.Open();
 
-            using var command = new NpgsqlCommand(@"SELECT ""deleteOrdersWithExcessiveDate""()", conn);
+            using var command = new NpgsqlCommand(@"SELECT delete_orders_with_excessive_date()", conn);
             await command.ExecuteNonQueryAsync();
 
             conn.Close();

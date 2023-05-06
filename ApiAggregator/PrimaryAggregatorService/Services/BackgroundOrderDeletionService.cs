@@ -33,7 +33,7 @@ namespace PrimaryAggregatorService.Services
                 await _limiter.AcquireAsync(1, token);
                 if (token.IsCancellationRequested) { return; }
 
-                await _repository.DeleteOldOrders();
+                await _repository.DeleteOldOrders();//проверку на исключения
             }
         }
     }

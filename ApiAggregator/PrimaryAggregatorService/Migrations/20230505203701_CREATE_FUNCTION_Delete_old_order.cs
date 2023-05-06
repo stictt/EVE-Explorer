@@ -11,10 +11,10 @@ namespace PrimaryAggregatorService.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql(@"
-            CREATE OR REPLACE FUNCTION deleteOrdersWithExcessiveDate() RETURNS void AS $$
+            CREATE OR REPLACE FUNCTION delete_orders_with_excessive_date() RETURNS void AS $$
             BEGIN
                 DELETE FROM ""Orders""
-                WHERE ""PackageDate"" > NOW() - INTERVAL '13 hours';
+                WHERE ""PackageDate"" < NOW() - INTERVAL '13 hours';
             END;
             $$ LANGUAGE plpgsql;
         ");
