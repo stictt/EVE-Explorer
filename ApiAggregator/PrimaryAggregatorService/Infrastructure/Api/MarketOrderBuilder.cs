@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Reflection;
 using System.Reflection.PortableExecutable;
-using System.Threading.RateLimiting;
 
 namespace PrimaryAggregatorService.Infrastructure.Api
 {
@@ -14,30 +13,12 @@ namespace PrimaryAggregatorService.Infrastructure.Api
     {
         private static string Api = @"https://esi.evetech.net/latest/markets/{0}/orders/?datasource=tranquility&order_type=all&page={1}";
         private List<int> _marketOrders = new List<int>();
-        private ILoggerFactory _loggerFactory;
-        private ILogger _logger;
-        private int _orderCount = 0;
-        private int _parallelCount = 0;
-        private RateLimiter _limiter;
-        public MarketOrderBuilder(int parallelCount,List<int> regionsId, ILoggerFactory loggerFactory) 
+        public MarketOrderBuilder(int parallelCount,List<int> regionsId) 
         {
-            _loggerFactory = loggerFactory;
-            _logger = _loggerFactory.CreateLogger<MarketOrderBuilder>();
-            _parallelCount = parallelCount;
+            ParallelCount = parallelCount;
             CheckResponseAndThrow += CheckResponseAndThrowHandler;
             ExpectedErrorHandler += ErrorHandler;
             _marketOrders = regionsId;
-
-            _limiter = new SlidingWindowRateLimiter(
-                new SlidingWindowRateLimiterOptions()
-                {
-                    Window = TimeSpan.FromSeconds(1),
-                    SegmentsPerWindow = 10,
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    QueueLimit = 1,
-                    PermitLimit = _parallelCount,
-                    AutoReplenishment = true
-                });
         }
 
         public override List<IPlanRequest> GetPlanRequests()
@@ -55,17 +36,14 @@ namespace PrimaryAggregatorService.Infrastructure.Api
             return result;
         }
 
-        public override List<IPlanRequest> UpdateQueryPlan(BaseResponseHttp responseHttp)
+        public override void UpdateQueryPlan(BaseResponseHttp responseHttp, BlockingCollection<IPlanRequest> planRequests)
         {
             int page = GetNumberPage(responseHttp);
-            List<IPlanRequest> planRequests = new List<IPlanRequest>();
 
-            if (page <= 1 ){ return new(); }
-            if (((PlanRequestMarketApi)responseHttp.PlanRequest).Page > 1) { return new(); }
-            _logger.LogInformation("Count page Plan {0}", page);
-            _orderCount = _orderCount + page;
+            if (page <= 1 ){ return; }
+            if (((PlanRequestMarketApi)responseHttp.PlanRequest).Page > 1) { return; }
             Enumerable.Range(2, page - 1)
-                .Select(x =>  new PlanRequestMarketApi()
+                .Select(x => new PlanRequestMarketApi()
                 {
                     Page = x,
                     PatternURL = Api,
@@ -74,9 +52,8 @@ namespace PrimaryAggregatorService.Infrastructure.Api
                 .ToList()
                 .ForEach(x =>
                 {
-                    planRequests.Add(x);
+                    planRequests.TryAdd(x);
                 });
-            return planRequests;
         }
         private SettingsSchedulerErrorSource ErrorHandler (ILogger logger,
             TransferHandlingErrorStatusCodeException transferHandlingError)
@@ -135,16 +112,6 @@ namespace PrimaryAggregatorService.Infrastructure.Api
                     baseResponse.Error = true;
                     throw new TransferHandlingErrorStatusCodeException(baseResponse);
             }
-        }
-
-        public override int ExpectedAmountRequest()
-        {
-            return _orderCount;
-        }
-
-        public override RateLimiter GetLimiter()
-        {
-            return _limiter;
         }
     }
 }
