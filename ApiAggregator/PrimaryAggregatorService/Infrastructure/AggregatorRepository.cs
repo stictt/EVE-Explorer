@@ -3,8 +3,8 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using NpgsqlTypes;
 using PrimaryAggregatorService.Models;
-using PrimaryAggregatorService.Models.Api;
 using PrimaryAggregatorService.Models.DataBases;
+using System.Linq;
 
 namespace PrimaryAggregatorService.Infrastructure
 {
@@ -50,6 +50,49 @@ namespace PrimaryAggregatorService.Infrastructure
                 binaryImporter.Write(customer.VolumeTotal, NpgsqlDbType.Bigint);
             }
             await binaryImporter.CompleteAsync();
+        }
+
+        public async Task InsertPackage(DateTime date)
+        {
+            await _context.Packages.AddAsync(new Package() { PackageDate = date });
+        }
+
+        public async Task<Package> GetLastPackageAsync()
+        {
+            return await _context.Packages.OrderByDescending(x => x.PackageDate)
+                .FirstOrDefaultAsync();
+        }
+
+        public async Task<List<OrderDTO>> GetOrdersInDataAsync(DateTime date, List<int> typesId = null )
+        {
+            if (typesId != null && typesId.Count > 0)
+            {
+                return await _context.Orders.AsNoTracking()
+                    .Where(x => typesId.Contains(x.TypeId) && x.PackageDate == date)
+                    .ToListAsync();
+            }
+            else
+            {
+                return await _context.Orders.AsNoTracking()
+                    .Where(x => x.PackageDate == date)
+                    .ToListAsync();
+            }
+        }
+
+        public async Task<List<OrderDTO>> GetOrdersAsync(List<int> typesId, TimeSpan dateRange)
+        {
+            if (typesId != null && typesId.Count > 0)
+            {
+                return await _context.Orders.AsNoTracking()
+                    .Where(x => typesId.Contains(x.TypeId) && x.PackageDate > (DateTime.UtcNow - dateRange))
+                    .ToListAsync();
+            }
+            else
+            {
+                return await _context.Orders.AsNoTracking()
+                    .Where(x => x.PackageDate > (DateTime.UtcNow - dateRange))
+                    .ToListAsync();
+            }
         }
 
         public async Task DeleteOldOrders()

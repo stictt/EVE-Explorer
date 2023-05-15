@@ -1,12 +1,9 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Hosting;
 using PrimaryAggregatorService.Infrastructure;
-using PrimaryAggregatorService.Infrastructure.Api;
-using PrimaryAggregatorService.Models.Api;
 using PrimaryAggregatorService.Models.DataBases;
 using PrimaryAggregatorService.Services;
+using PrimaryAggregatorService.Services.GRPC;
 using Serilog;
-using System.Configuration;
 
 internal class Program
 {
@@ -18,6 +15,7 @@ internal class Program
         builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSettings(builder.Configuration);
+        builder.Services.AddGrpc();
 
         var logger = new LoggerConfiguration()
                     .MinimumLevel.Debug()
@@ -33,6 +31,7 @@ internal class Program
         builder.Services.AddSingleton<BackgroundMarketWorkerServices>();
         builder.Services.AddSingleton<AggregatorRepository>();
         builder.Services.AddSingleton<BackgroundOrderDeletionService>();
+        builder.Services.AddSingleton<DataGenerationService>();
 
         builder.Services.AddLogging(loggingBuilder =>
         {
@@ -42,6 +41,9 @@ internal class Program
         builder.Services.AddSingleton(Log.Logger);
 
         var app = builder.Build();
+
+        app.MapGrpcService<GRPCOrderService>();
+        app.MapGrpcService<GRPCTradingVolumeService>();
 
         app.UseHttpsRedirection();
 

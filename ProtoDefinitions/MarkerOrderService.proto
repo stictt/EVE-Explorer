@@ -1,0 +1,90 @@
+syntax = "proto3";
+import "google/protobuf/timestamp.proto";
+option csharp_namespace = "Market_orders";
+
+package Market;
+
+service OrderService {
+  rpc GetOrders(OrdersRequest) returns(OrdersResponse);
+}
+
+service TradingVolumeService {
+  rpc GetTradingVolume(TradingVolumeRequest) returns(TradingVolumesResponse);
+}
+
+message TradingVolumeRequest
+{
+	repeated int32 type_id = 1;
+
+	google.protobuf.Timestamp time_range = 2;
+}
+
+message TradingVolumesResponse
+{
+	message OrderVolume
+	{
+		bool Is_Buy_Order = 1;
+		int32 min_volume = 2;
+		double price = 3;
+		int32 type_id = 4;
+		int64 volume_remain = 5;
+	}
+
+	repeated OrderVolume volume = 1;
+}
+
+enum RequestTimeRangeOption {
+	AllTime = 0;
+	Portion = 1;
+	LastData = 2;
+}
+
+enum RequestTypeIdOption {
+	AllTypeId = 0;
+	Range = 1;
+}
+
+message OrdersRequest
+{
+
+
+	RequestTypeIdOption option_type_id = 1;
+
+	RequestTimeRangeOption option_time_range = 2;
+
+	repeated int32 type_id = 3;
+
+	google.protobuf.Timestamp time_range = 4;
+}
+
+message OrdersResponse
+{
+	message Order
+	{
+		int32 duration = 1;
+
+		bool is_buy_order = 2;
+
+		google.protobuf.Timestamp issued = 3;
+
+		int64 location_id = 4;
+
+		int32 min_volume = 5;
+
+		int64 order_id =6;
+
+		double price = 7;
+
+		string range = 8;
+
+		int32 system_id = 9;
+
+		int32 type_id = 10;
+
+		int64 volume_remain = 11;
+
+		int64 volume_total = 12;
+	}
+
+	repeated Order orders = 1;
+}

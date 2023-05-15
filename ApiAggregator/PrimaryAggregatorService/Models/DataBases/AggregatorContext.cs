@@ -22,5 +22,6 @@ namespace PrimaryAggregatorService.Models.DataBases
                     x => (RangeOrderMarket)Enum.Parse(typeof(RangeOrderMarket), x)); 
         }
         public DbSet<OrderDTO> Orders { get; set; }
+        public DbSet<Package> Packages { get; set; }
     }
 }

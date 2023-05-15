@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PrimaryAggregatorService.Models.DataBases;
@@ -11,9 +12,11 @@ using PrimaryAggregatorService.Models.DataBases;
 namespace PrimaryAggregatorService.Migrations
 {
     [DbContext(typeof(AggregatorContext))]
-    partial class AggregatorContextModelSnapshot : ModelSnapshot
+    [Migration("20230515004352_Add_Table_Package")]
+    partial class Add_Table_Package
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

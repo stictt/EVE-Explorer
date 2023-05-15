@@ -18,6 +18,34 @@ namespace PrimaryAggregatorService.Services
             _logger = _loggerFactory.CreateLogger<DataBaseService>();
         }
 
+        public async Task<List<OrderDTO>> GetRangeOrderAsync(List<int> typesId,TimeSpan dateRange)
+        {
+            try
+            {
+                return await _repository.GetOrdersAsync(typesId, dateRange);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex.Message);
+                return new List<OrderDTO>();
+            }
+        }
+
+        public async Task<List<OrderDTO>> GetLastRangeOrderAsync(List<int> typesId)
+        {
+            try
+            {
+                var lastData = await _repository.GetLastPackageAsync();
+
+                return await _repository.GetOrdersInDataAsync(lastData.PackageDate,typesId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex.Message);
+                return new List<OrderDTO>();
+            }
+        }
+
         public async Task AddRangeOrderApi(List<OrderApi> orders)
         {
             var config = new MapperConfiguration(cfg =>
@@ -34,7 +62,8 @@ namespace PrimaryAggregatorService.Services
 
             try
             {
-               await _repository.BinaryInsertOrdersAsync(ordersDTO);
+                await _repository.BinaryInsertOrdersAsync(ordersDTO);
+                await _repository.InsertPackage(date);
             }
             catch(Exception ex) 
             {
