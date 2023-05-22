@@ -18,13 +18,13 @@ namespace AnalyticalMicroservice.Services.GRPC
             _logger = factory.CreateLogger<GRPCTradingVolumeService>();
         }
 
-        public async Task<OrdersResponse> GetTradingVolumeAsync(OrdersRequest request)
+        public async Task<TradingVolumesResponse> GetTradingVolumeAsync(TradingVolumeRequest request)
         {
             _logger.LogInformation("Start grpc Trading Volume request.");
             using var channel = GrpcChannel.ForAddress(_connercion.ConnectionStrings);
-            var client = new OrderService.OrderServiceClient(channel);
+            var client = new TradingVolumeService.TradingVolumeServiceClient(channel);
 
-            return await client.GetOrdersAsync(request);
+            return await client.GetTradingVolumeAsync(request);
         }
     }
 }

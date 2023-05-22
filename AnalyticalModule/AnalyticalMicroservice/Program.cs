@@ -1,4 +1,5 @@
 using AnalyticalMicroservice.Infrastructure;
+using AnalyticalMicroservice.Services;
 using AnalyticalMicroservice.Services.GRPC;
 
 internal class Program
@@ -15,8 +16,11 @@ internal class Program
         builder.Services.AddSwaggerGen();
         builder.Services.AddSettings(builder.Configuration);
 
-        builder.Services.AddSingleton<GRPCTradingVolumeService>();
-        builder.Services.AddSingleton<GRPCOrderService>();
+        builder.Services.AddScoped<GRPCTradingVolumeService>();
+        builder.Services.AddScoped<GRPCOrderService>();
+
+        builder.Services.AddScoped<RequestOrderService>();
+        builder.Services.AddScoped<RequestTradingVolumeService>();
 
         var app = builder.Build();
 
