@@ -28,6 +28,7 @@ message TradingVolumesResponse
 		double price = 3;
 		int32 type_id = 4;
 		int64 volume_remain = 5;
+		google.protobuf.Timestamp package_date = 6;
 	}
 
 	repeated OrderVolume volume = 1;
@@ -84,6 +85,8 @@ message OrdersResponse
 		int64 volume_remain = 11;
 
 		int64 volume_total = 12;
+
+		google.protobuf.Timestamp package_date = 13;
 	}
 
 	repeated Order orders = 1;

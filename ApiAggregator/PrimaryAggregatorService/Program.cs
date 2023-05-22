@@ -3,7 +3,6 @@ using PrimaryAggregatorService.Infrastructure;
 using PrimaryAggregatorService.Models.DataBases;
 using PrimaryAggregatorService.Services;
 using PrimaryAggregatorService.Services.GRPC;
-using Serilog;
 
 internal class Program
 {
@@ -16,11 +15,6 @@ internal class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSettings(builder.Configuration);
         builder.Services.AddGrpc();
-
-        var logger = new LoggerConfiguration()
-                    .MinimumLevel.Debug()
-                    .WriteTo.Console()
-                    .CreateLogger();
 
         builder.Services.AddDbContext<AggregatorContext>(
             options => options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")),
@@ -38,7 +32,6 @@ internal class Program
             loggingBuilder.AddConfiguration(builder.Configuration.GetSection("Logging"));
             loggingBuilder.AddConsole();
         });
-        builder.Services.AddSingleton(Log.Logger);
 
         var app = builder.Build();
 

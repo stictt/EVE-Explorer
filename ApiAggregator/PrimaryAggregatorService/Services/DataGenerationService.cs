@@ -27,7 +27,8 @@ namespace PrimaryAggregatorService.Services
                 MinVolume = x.MinVolume,
                 Price = x.Price,
                 TypeId = x.TypeId,
-                VolumeRemain = x.VolumeRemain
+                VolumeRemain = x.VolumeRemain,
+                PackageDate = x.PackageDate.ToTimestamp()
             }).ToList();
 
             var tradingVolumes = new TradingVolumesResponse();
@@ -74,7 +75,9 @@ namespace PrimaryAggregatorService.Services
                 SystemId = x.SystemId,
                 TypeId = x.TypeId,
                 VolumeRemain = x.VolumeRemain,
-                VolumeTotal = x.VolumeTotal
+                VolumeTotal = x.VolumeTotal,
+                PackageDate = x.PackageDate.ToTimestamp()
+
             }).ToList();
         }
     }
