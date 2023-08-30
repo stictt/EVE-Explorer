@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using PrimaryAggregatorService.Infrastructure;
 using PrimaryAggregatorService.Models.DataBases;
 using PrimaryAggregatorService.Services;
-using PrimaryAggregatorService.Services.GRPC;
+
 
 internal class Program
 {
@@ -35,8 +35,6 @@ internal class Program
 
         var app = builder.Build();
 
-        app.MapGrpcService<GRPCOrderService>();
-        app.MapGrpcService<GRPCTradingVolumeService>();
 
         app.UseHttpsRedirection();
 

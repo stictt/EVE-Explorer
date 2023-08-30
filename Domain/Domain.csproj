@@ -24,6 +24,9 @@
     <None Update="Resource\mapSolarSystems.csv">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Resource\OrderHistoryMonth.ch">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Resource\planetSchematicsTypeMap.csv">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
