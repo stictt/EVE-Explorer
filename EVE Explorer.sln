@@ -14,9 +14,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Loader", "Loader\Loader.csp
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Domain", "Domain\Domain.csproj", "{06A08539-8700-43FB-8DA1-165AE03E0745}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Testing", "Testing\Testing.csproj", "{C0D71042-6AC6-41C2-9454-62E7BABB844F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Testing", "Testing\Testing.csproj", "{C0D71042-6AC6-41C2-9454-62E7BABB844F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ANALYTICS", "ANALYTICS\ANALYTICS.csproj", "{47FF0BB6-F0B6-442C-A941-33FAF3089977}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ANALYTICS", "ANALYTICS\ANALYTICS.csproj", "{47FF0BB6-F0B6-442C-A941-33FAF3089977}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestForm", "TestForm\TestForm.csproj", "{EAF33B58-6670-4CF1-91D7-D99F50BC69C3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -44,6 +46,10 @@ Global
 		{47FF0BB6-F0B6-442C-A941-33FAF3089977}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{47FF0BB6-F0B6-442C-A941-33FAF3089977}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{47FF0BB6-F0B6-442C-A941-33FAF3089977}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EAF33B58-6670-4CF1-91D7-D99F50BC69C3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EAF33B58-6670-4CF1-91D7-D99F50BC69C3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EAF33B58-6670-4CF1-91D7-D99F50BC69C3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EAF33B58-6670-4CF1-91D7-D99F50BC69C3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

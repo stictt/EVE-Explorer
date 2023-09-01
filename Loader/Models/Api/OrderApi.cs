@@ -3,7 +3,7 @@ using Newtonsoft.Json;
 
 namespace Loader.Models.Api
 {
-    public class OrderApi
+    public class OrderApi : IComparable<OrderApi>
     {
         [JsonProperty("duration")]
         public short Duration { get; set; }
@@ -40,5 +40,11 @@ namespace Loader.Models.Api
 
         [JsonProperty("volume_total")]
         public long VolumeTotal { get; set; }
+
+
+        public int CompareTo(OrderApi other)
+        {
+            return this.Price.CompareTo(other.Price);
+        }
     }
 }

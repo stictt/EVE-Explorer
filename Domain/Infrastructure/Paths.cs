@@ -5,7 +5,7 @@
         // Directories
         public static string CurrentDirectory => Environment.CurrentDirectory;
 
-        public static string DataResourcePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Resource");
+        public static string DataResourcePath => Path.Combine(CurrentDirectory, "Resource");
 
         public static string DataInvTypesPath => Path.Combine(DataResourcePath, "invTypes.csv");
         public static string DataMapRegionsPath => Path.Combine(DataResourcePath, "mapRegions.csv");
