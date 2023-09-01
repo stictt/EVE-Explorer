@@ -27,15 +27,16 @@ namespace TestForm
             var items = (await GetMarketAsync()).Where(x=>ints.Contains(x.SystemId));
 
             var max = items.Where(x => x.IsBuyOrder).ToList();
-            var min = items.Where(x => !x.IsBuyOrder).ToList();
+            var min = items.Where(x => false == x.IsBuyOrder).ToList();
 
             var result = min.GroupBy(x => x.TypeId).Select(x =>
                 {
                     var buy = max.Where(xx => xx.TypeId == x.Key).Max();
-                    if (buy == null) { return null; }
+                    var sel = x.Min();
+                    if (buy == null || sel == null) { return null; }
                    return new Model()
                     {
-                        Margin = 100 - (buy?.Price ?? 0 / ((x.Min()?.Price ?? 0) / 100)),
+                        Margin = 100 - (buy.Price  / (sel.Price  / 100)),
                         averageVolume = dataLoad.List.Where(y => y.TypeId == x.Key).FirstOrDefault()?.AverageVolume ?? 0,
                         buyPrice = buy?.Price ?? 0,
                         sellPrice = x.Min()?.Price ?? 0,
@@ -45,7 +46,15 @@ namespace TestForm
                     };
                 }).ToList() ;
 
-            return result.Where(x=>x != null).ToList();
+            return result.Where(x=>x != null)
+                //.Where(x=>x.Margin > 7)
+                .Where(x=>x.averageVolume > 100)
+                .Where(x=>x.buyPrice > 0)
+                .Where(x => x.sellPrice > 0)
+                .Where(x=>x.ratingType > 800_000_000)
+                .OrderByDescending(x=>x.Margin)
+                .Take(1000)
+                .ToList();
         }
 
 
