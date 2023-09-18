@@ -19,7 +19,7 @@ internal class Program
 
         var items = await requestApiScheduler.Start();
 
-        Stopwatch stopwatchApi = new Stopwatch();
+        Stopwatch stopwatchApi = new Stopwatch(); 
         stopwatchApi.Start();
 
         OrderHistoryRecycler orderHistoryRecycler = new OrderHistoryRecycler();
