@@ -1,0 +1,44 @@
+{
+  "DefaultRegion": {
+    "DefaultRegionID": 10000002,
+    "DefaultSystems": [ 30000142, 30000144 ]
+  },
+  "SettingsRegion": [
+    {
+      "Region": {
+        "Id": 10000002,
+        "DefaultSystems": [ 30000142, 30000144 ],
+        "Name": "Jita"
+      }
+    },
+    {
+      "Region": {
+        "Id": 10000042,
+        "DefaultSystems": [ 30002053 ],
+        "Name": "Hek"
+      }
+    },
+    {
+      "Region": {
+        "Id": 10000043,
+        "DefaultSystems": [ 30002187 ],
+        "Name": "Amarr"
+      }
+    },
+    {
+      "Region": {
+        "Id": 10000032,
+        "DefaultSystems": [ 30002659 ],
+        "Name": "Dodixie"
+      }
+    },
+    {
+      "Region": {
+        "Id": 10000030,
+        "DefaultSystems": [ 30002510 ],
+        "Name": "Rens"
+      }
+    }
+
+  ]
+}
