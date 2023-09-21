@@ -40,7 +40,7 @@ namespace TestForm
                         averageVolume = dataLoad.List.Where(y => y.TypeId == x.Key).FirstOrDefault()?.AverageVolume ?? 0,
                         buyPrice = buy?.Price ?? 0,
                         sellPrice = x.Min()?.Price ?? 0,
-                        ratingType = dataLoad.List.Where(y => y.TypeId == x.Key).FirstOrDefault()?.Rating ?? 0,
+                        ratingType = (dataLoad.List.Where(y => y.TypeId == x.Key).FirstOrDefault()?.Rating ?? 0)/ 1_000_000_000,
                         typeID = x.Key,
                         Name = InvTypes.Where(y => y.TypeID == x.Key).FirstOrDefault()?.TypeName ?? "nan",
                     };
@@ -51,7 +51,7 @@ namespace TestForm
                 .Where(x=>x.averageVolume > 100)
                 .Where(x=>x.buyPrice > 0)
                 .Where(x => x.sellPrice > 0)
-                .Where(x=>x.ratingType > 800_000_000)
+                .Where(x=>x.ratingType > 1)
                 .OrderByDescending(x=>x.Margin)
                 .Take(1000)
                 .ToList();
