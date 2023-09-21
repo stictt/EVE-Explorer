@@ -30,22 +30,23 @@
         {
             components = new System.ComponentModel.Container();
             dataGridView1 = new DataGridView();
-            modelBindingSource = new BindingSource(components);
-            button1 = new Button();
-            modelBindingSource1 = new BindingSource(components);
             marginDataGridViewTextBoxColumn = new DataGridViewTextBoxColumn();
             ratingTypeDataGridViewTextBoxColumn = new DataGridViewTextBoxColumn();
             averageVolumeDataGridViewTextBoxColumn = new DataGridViewTextBoxColumn();
             nameDataGridViewTextBoxColumn = new DataGridViewTextBoxColumn();
             buyPriceDataGridViewTextBoxColumn = new DataGridViewTextBoxColumn();
             sellPriceDataGridViewTextBoxColumn = new DataGridViewTextBoxColumn();
+            modelBindingSource1 = new BindingSource(components);
+            modelBindingSource = new BindingSource(components);
+            button1 = new Button();
             ((System.ComponentModel.ISupportInitialize)dataGridView1).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)modelBindingSource).BeginInit();
             ((System.ComponentModel.ISupportInitialize)modelBindingSource1).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)modelBindingSource).BeginInit();
             SuspendLayout();
             // 
             // dataGridView1
             // 
+            dataGridView1.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             dataGridView1.AutoGenerateColumns = false;
             dataGridView1.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dataGridView1.Columns.AddRange(new DataGridViewColumn[] { marginDataGridViewTextBoxColumn, ratingTypeDataGridViewTextBoxColumn, averageVolumeDataGridViewTextBoxColumn, nameDataGridViewTextBoxColumn, buyPriceDataGridViewTextBoxColumn, sellPriceDataGridViewTextBoxColumn });
@@ -54,26 +55,8 @@
             dataGridView1.Name = "dataGridView1";
             dataGridView1.RowHeadersWidth = 51;
             dataGridView1.RowTemplate.Height = 29;
-            dataGridView1.Size = new Size(953, 536);
+            dataGridView1.Size = new Size(989, 603);
             dataGridView1.TabIndex = 0;
-            // 
-            // modelBindingSource
-            // 
-            modelBindingSource.DataSource = typeof(Model);
-            // 
-            // button1
-            // 
-            button1.Location = new Point(1011, 25);
-            button1.Name = "button1";
-            button1.Size = new Size(94, 29);
-            button1.TabIndex = 1;
-            button1.Text = "button1";
-            button1.UseVisualStyleBackColor = true;
-            button1.Click += button1_Click;
-            // 
-            // modelBindingSource1
-            // 
-            modelBindingSource1.DataSource = typeof(Model);
             // 
             // marginDataGridViewTextBoxColumn
             // 
@@ -123,6 +106,25 @@
             sellPriceDataGridViewTextBoxColumn.Name = "sellPriceDataGridViewTextBoxColumn";
             sellPriceDataGridViewTextBoxColumn.Width = 125;
             // 
+            // modelBindingSource1
+            // 
+            modelBindingSource1.DataSource = typeof(Model);
+            // 
+            // modelBindingSource
+            // 
+            modelBindingSource.DataSource = typeof(Model);
+            // 
+            // button1
+            // 
+            button1.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            button1.Location = new Point(1025, 12);
+            button1.Name = "button1";
+            button1.Size = new Size(94, 29);
+            button1.TabIndex = 1;
+            button1.Text = "Update";
+            button1.UseVisualStyleBackColor = true;
+            button1.Click += button1_Click;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
@@ -133,8 +135,8 @@
             Name = "Form1";
             Text = "Form1";
             ((System.ComponentModel.ISupportInitialize)dataGridView1).EndInit();
-            ((System.ComponentModel.ISupportInitialize)modelBindingSource).EndInit();
             ((System.ComponentModel.ISupportInitialize)modelBindingSource1).EndInit();
+            ((System.ComponentModel.ISupportInitialize)modelBindingSource).EndInit();
             ResumeLayout(false);
         }
 
