@@ -51,7 +51,7 @@ namespace TestForm
         private void btnOpenArbitrage_Click(object? sender, EventArgs e)
         {
             var form = new Form1(); // твоя тестовая форма отчёта
-           // form.Show(this);
+            form.Show(this);
         }
 
         private async void btnBuildHistory_Click(object? sender, EventArgs e)
