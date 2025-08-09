@@ -1,5 +1,6 @@
 ﻿using Domain.Infrastructure;
 using Domain.Infrastructure.Interface;
+using Domain.Models.BaseResourceModels;
 using Domain.Models.ResourceDTO;
 
 namespace Domain.Services
@@ -43,6 +44,59 @@ namespace Domain.Services
                 _logger.LogError(String.Format("{Message}.",e.Message));
                 return new List<BaseInvType>();
             }
+        }
+
+        // --- новое: чтение остальных CSV по стандартным путям ---
+        public List<InvGroup> GetInvGroups() =>
+            SafeRead<InvGroup>(Paths.DataInvGroupsPath, "InvGroups");
+
+        public List<InvCategory> GetInvCategories() =>
+            SafeRead<InvCategory>(Paths.DataInvCategoriesPath, "InvCategories");
+
+        public List<InvMarketGroup> GetInvMarketGroups() =>
+            SafeRead<InvMarketGroup>(Paths.DataInvMarketGroupsPath, "InvMarketGroups");
+
+        public List<IndustryActivity> GetIndustryActivity() =>
+            SafeRead<IndustryActivity>(Paths.DataIndustryActivityPath, "IndustryActivity");
+
+        public List<IndustryActivityMaterial> GetIndustryActivityMaterials() =>
+            SafeRead<IndustryActivityMaterial>(Paths.DataIndustryActivityMaterialsPath, "IndustryActivityMaterials");
+
+        public List<IndustryActivityProduct> GetIndustryActivityProducts() =>
+            SafeRead<IndustryActivityProduct>(Paths.DataIndustryActivityProductsPath, "IndustryActivityProducts");
+
+        public List<IndustryBlueprint> GetIndustryBlueprints() =>
+            SafeRead<IndustryBlueprint>(Paths.DataIndustryBlueprintsPath, "IndustryBlueprints");
+
+        public List<InvTypeMaterial> GetInvTypeMaterials() =>
+            SafeRead<InvTypeMaterial>(Paths.DataInvTypeMaterialsPath, "InvTypeMaterials");
+
+        private List<T> SafeRead<T>(string path, string tag) where T : class
+        {
+            var reader = new CsvDataReader<T>(path);
+            try { return reader.Read(); }
+            catch (Exception e)
+            {
+                _logger.LogError($"Unable to upload file {tag} in path {path}.");
+                _logger.LogError(e.Message);
+                return new List<T>();
+            }
+        }
+
+        // --- агрегат на базе существующих сервисов ---
+        public SdeAggregateDTO BuildSdeAggregate()
+        {
+            var types = GetBaseInvTypes(); // оставляем как есть
+            var groups = GetInvGroups();
+            var cats = GetInvCategories();
+            var mgs = GetInvMarketGroups();
+            var ia = GetIndustryActivity();
+            var iam = GetIndustryActivityMaterials();
+            var iap = GetIndustryActivityProducts();
+            var ibl = GetIndustryBlueprints();
+            var itm = GetInvTypeMaterials();
+
+            return _mapCSV.BuildAggregate(types, groups, cats, mgs, ia, iam, iap, ibl, itm);
         }
     }
 }

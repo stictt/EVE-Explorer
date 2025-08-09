@@ -1,4 +1,9 @@
 ﻿using ANALYTICS;
+using Domain.Infrastructure;
+using Domain.Models.ResourceDTO;
+using Domain.Services;       // CSVMapService, SdeAggregateDTO
+using Loader.Infrastructure;
+using Loader.Services;       // LoggerFactoryBase
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,12 +17,17 @@ namespace TestForm
         private OrderHistoryMonthManager _historyManager;
         private CancellationTokenSource? _cts;
 
+        private CsvService _csv;
+        private SdeAggregateDTO? _sde;
+
         public MainForm()
         {
             InitializeComponent();
 
             _settings = SettingsService.Load();
             _historyManager = new OrderHistoryMonthManager(_settings, Log);
+
+            _csv = new CsvService(new CSVMapService(), new LoggerFactoryBase().CreateLogger<CsvService>());
 
             UiStyle.ApplyDark(this);
             UpdateHistoryLabels();
@@ -41,7 +51,7 @@ namespace TestForm
         private void btnOpenArbitrage_Click(object? sender, EventArgs e)
         {
             var form = new Form1(); // твоя тестовая форма отчёта
-            form.Show(this);
+           // form.Show(this);
         }
 
         private async void btnBuildHistory_Click(object? sender, EventArgs e)
@@ -91,7 +101,6 @@ namespace TestForm
             }
         }
 
-
         private void btnCancel_Click(object? sender, EventArgs e)
         {
             _cts?.Cancel();
@@ -99,7 +108,6 @@ namespace TestForm
 
         private void btnSettings_Click(object? sender, EventArgs e)
         {
-            // простой диалог настроек (минимум)
             using var f = new Form();
             f.Text = "Настройки";
             f.StartPosition = FormStartPosition.CenterParent;
@@ -107,7 +115,6 @@ namespace TestForm
             var tbRegion = new TextBox { Text = _settings.RegionId.ToString(), Dock = DockStyle.Top };
             var tbPar = new TextBox { Text = _settings.Parallelism.ToString(), Dock = DockStyle.Top };
             var tbStale = new TextBox { Text = _settings.HistoryStaleAfterHours.ToString(), Dock = DockStyle.Top };
-     
 
             var btnOk = new Button { Text = "OK", Dock = DockStyle.Bottom };
             btnOk.Click += (s, ev) =>
@@ -134,6 +141,33 @@ namespace TestForm
             f.Controls.Add(btnOk);
             f.Width = 520; f.Height = 260;
             f.ShowDialog(this);
+        }
+
+        private async void btnOpenOre_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                UseWaitCursor = true;
+                statusLabel.Text = "Загрузка SDE...";
+
+                _sde ??= _csv.BuildSdeAggregate();
+
+                var priceProvider = new EsiPriceProvider(s => Log(s)); // можно заменить на кэш
+                var avgProvider = new HistoryAvgProvider();          // опционально
+
+                using var f = new OreYieldForm(_sde, priceProvider, avgProvider);
+                f.ShowDialog(this);
+
+                statusLabel.Text = "Готово";
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = "Ошибка: " + ex.Message;
+            }
+            finally
+            {
+                UseWaitCursor = false;
+            }
         }
     }
 }

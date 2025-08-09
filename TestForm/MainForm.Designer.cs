@@ -18,6 +18,7 @@
 
             toolStripMain = new System.Windows.Forms.ToolStrip();
             btnOpenArbitrage = new System.Windows.Forms.ToolStripButton();
+            btnOpenOre = new System.Windows.Forms.ToolStripButton();
             btnBuildHistory = new System.Windows.Forms.ToolStripButton();
             btnCancel = new System.Windows.Forms.ToolStripButton();
             toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
@@ -32,13 +33,14 @@
             flowCards = new System.Windows.Forms.FlowLayoutPanel();
             cardArb = new System.Windows.Forms.Panel();
             cardHist = new System.Windows.Forms.Panel();
-            cardProd = new System.Windows.Forms.Panel();
+            cardOre = new System.Windows.Forms.Panel();
             cardPi = new System.Windows.Forms.Panel();
 
             // --- ToolStrip ---
             toolStripMain.ImageScalingSize = new System.Drawing.Size(20, 20);
             toolStripMain.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
                 btnOpenArbitrage,
+                btnOpenOre,           // новая кнопка
                 btnBuildHistory,
                 btnCancel,
                 toolStripSeparator1,
@@ -55,6 +57,10 @@
             btnOpenArbitrage.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
             btnOpenArbitrage.Text = "Открыть отчёт (Арбитраж)";
             btnOpenArbitrage.Click += btnOpenArbitrage_Click;
+
+            btnOpenOre.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
+            btnOpenOre.Text = "Добыча руды";
+            btnOpenOre.Click += btnOpenOre_Click;
 
             btnBuildHistory.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
             btnBuildHistory.Text = "Пересобрать историю";
@@ -102,24 +108,25 @@
                 "Просмотреть текущие возможности арбитража в главном хабе.",
                 "Открыть", btnOpenArbitrage_Click, cardSize);
 
-            // --- Card: History (OrderHistoryMonthList) ---
+            // --- Card: History ---
             cardHist = MakeCardWithInfo(
                 "История (OrderHistoryMonthList)",
                 "Пересобрать историю цен/объёмов за ~30 дней на основе торгуемых позиций.",
                 "Пересобрать", btnBuildHistory_Click,
                 out lblHistoryInfo, cardSize);
 
-            // --- Card: Производство (плейсхолдер) ---
-            cardProd = MakeCard("Производство (скоро)",
-                "Планировщик крафта: себестоимость, маржа, цепочки.", null, null, cardSize);
+            // --- Card: Ore ---
+            cardOre = MakeCard("Добыча руды",
+                "Посчитать ISK/час для сырой руды и рефайна по текущим ценам Джиты.",
+                "Открыть", btnOpenOre_Click, cardSize);
 
-            // --- Card: Планетарка (плейсхолдер) ---
+            // --- Card: PI (плейсхолдер) ---
             cardPi = MakeCard("Планетарка (скоро)",
                 "Калькулятор сетапов с учётом CPU/Power и выхода/час.", null, null, cardSize);
 
             flowCards.Controls.Add(cardArb);
             flowCards.Controls.Add(cardHist);
-            flowCards.Controls.Add(cardProd);
+            flowCards.Controls.Add(cardOre);
             flowCards.Controls.Add(cardPi);
 
             // --- Form ---
@@ -185,7 +192,6 @@
                 AutoSize = true
             };
 
-            // позиционируем ЛЕЙБЛ ЧУТЬ ВЫШЕ КНОПКИ
             int padding = 12;
             int buttonHeight = 36;
             int spacing = 8;
@@ -202,6 +208,7 @@
 
         private System.Windows.Forms.ToolStrip toolStripMain;
         private System.Windows.Forms.ToolStripButton btnOpenArbitrage;
+        private System.Windows.Forms.ToolStripButton btnOpenOre;
         private System.Windows.Forms.ToolStripButton btnBuildHistory;
         private System.Windows.Forms.ToolStripButton btnCancel;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
@@ -216,10 +223,9 @@
         private System.Windows.Forms.FlowLayoutPanel flowCards;
         private System.Windows.Forms.Panel cardArb;
         private System.Windows.Forms.Panel cardHist;
-        private System.Windows.Forms.Panel cardProd;
+        private System.Windows.Forms.Panel cardOre;
         private System.Windows.Forms.Panel cardPi;
 
-        // info label inside the History card
         private System.Windows.Forms.Label lblHistoryInfo;
     }
 }
