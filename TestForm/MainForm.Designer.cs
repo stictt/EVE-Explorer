@@ -34,13 +34,14 @@
             cardArb = new System.Windows.Forms.Panel();
             cardHist = new System.Windows.Forms.Panel();
             cardOre = new System.Windows.Forms.Panel();
+            cardMoon = new System.Windows.Forms.Panel();
             cardPi = new System.Windows.Forms.Panel();
 
             // --- ToolStrip ---
             toolStripMain.ImageScalingSize = new System.Drawing.Size(20, 20);
             toolStripMain.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
                 btnOpenArbitrage,
-                btnOpenOre,           // новая кнопка
+                btnOpenOre,
                 btnBuildHistory,
                 btnCancel,
                 toolStripSeparator1,
@@ -120,13 +121,19 @@
                 "Посчитать ISK/час для сырой руды и рефайна по текущим ценам Джиты.",
                 "Открыть", btnOpenOre_Click, cardSize);
 
-            // --- Card: PI (плейсхолдер) ---
+            // --- Card: Moon (NEW) ---
+            cardMoon = MakeCard("Лунные реакции (аналитика)",
+                "Сравнить маржу от лунной руды/материалов и конечных реакций/чертежей.",
+                "Открыть", btnOpenMoon_Click, cardSize);
+
+            // --- Card: PI (placeholder) ---
             cardPi = MakeCard("Планетарка (скоро)",
                 "Калькулятор сетапов с учётом CPU/Power и выхода/час.", null, null, cardSize);
 
             flowCards.Controls.Add(cardArb);
             flowCards.Controls.Add(cardHist);
             flowCards.Controls.Add(cardOre);
+            flowCards.Controls.Add(cardMoon);   // <-- добавили
             flowCards.Controls.Add(cardPi);
 
             // --- Form ---
@@ -224,6 +231,7 @@
         private System.Windows.Forms.Panel cardArb;
         private System.Windows.Forms.Panel cardHist;
         private System.Windows.Forms.Panel cardOre;
+        private System.Windows.Forms.Panel cardMoon;   // NEW
         private System.Windows.Forms.Panel cardPi;
 
         private System.Windows.Forms.Label lblHistoryInfo;
