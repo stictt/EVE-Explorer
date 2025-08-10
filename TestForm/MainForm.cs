@@ -232,11 +232,10 @@ namespace TestForm
 
                 _sde ??= _csv.BuildSdeAggregate();
 
-                // Если у твоего окна другой конструктор — поправь ниже.
                 var priceProvider = new EsiPriceProvider(s => Log(s));
                 var avgProvider = new HistoryAvgProvider();
 
-                using var f = new LunarProfitForm(_sde, priceProvider, avgProvider);
+                using var f = new MoonIndustryForm(_sde, priceProvider);
                 f.ShowDialog(this);
 
                 statusLabel.Text = "Готово";
