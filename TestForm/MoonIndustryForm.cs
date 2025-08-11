@@ -1,4 +1,5 @@
-﻿using System;
+﻿// MoonIndustryForm.cs — обновлённая версия с CraftPlanner
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -11,7 +12,8 @@ using Domain.Models.ResourceDTO;   // ItemExtDTO
 using Loader.Infrastructure;       // BinaryCachingService, Paths
 using ANALYTICS;
 using Domain.Infrastructure;
-using Domain.Models;               // OrderHistoryMonthList
+using Domain.Models;               // OrderHistoryMonthList + наше ядро крафта (Activity, Recipe, CraftPlanner, ...)
+using static Domain.Models.InMemoryRecipeCatalog; // IRoundingPolicy, DefaultRoundingPolicy
 
 namespace TestForm
 {
@@ -45,9 +47,15 @@ namespace TestForm
         private const int ACT_MANUFACTURING = 1;
         private const int ACT_REACTION = 11;
 
-        // Индексы рецептов: "что создаёт этот тип"
+        // Индексы рецептов (старые): "что создаёт этот тип" — оставляю для вспом. фильтров/поиска
         private Dictionary<int, BlueprintRecipeDTO> _reactionByProduct = new();
         private Dictionary<int, BlueprintRecipeDTO> _mfgByProduct = new();
+
+        // ---- Новое ядро крафта ----
+        private InMemoryRecipeCatalog _catalog;
+        private CraftPlanner _planner;
+        private IRoundingPolicy _round;
+        private CraftParamsSet _ps;
 
         public MoonIndustryForm(SdeAggregateDTO sde, IPriceProvider priceProvider)
         {
@@ -56,7 +64,7 @@ namespace TestForm
             _sde = sde;
             _priceProvider = priceProvider;
 
-            // построим индексы рецептов: продукт -> рецепт
+            // Индексы (оставляем для удобной фильтрации наборов)
             _reactionByProduct = _sde.Recipes
                 .Where(r => r.ActivityID == ACT_REACTION)
                 .SelectMany(r => r.Products.Select(p => (p.TypeID, r)))
@@ -69,9 +77,10 @@ namespace TestForm
                 .GroupBy(x => x.TypeID)
                 .ToDictionary(g => g.Key, g => g.First().r);
 
-            ApplyDarkTweaks();
+            // Инициализируем универсальное ядро (каталог, планировщик, параметры)
+            InitCraftKernel(); // загружает рецепты из _sde в InMemoryRecipeCatalog
 
-            // загрузка настроек формы
+            ApplyDarkTweaks();
             LoadSettings();
 
             // значения в контролы
@@ -101,6 +110,100 @@ namespace TestForm
 
             // первичный расчёт
             _ = RecalcAsync();
+        }
+
+        private void InitCraftKernel()
+        {
+            _catalog = new InMemoryRecipeCatalog();
+            _round = new DefaultRoundingPolicy();
+            _planner = new CraftPlanner(_catalog, _round);
+            _ps = new CraftParamsSet
+            {
+                Manufacturing = new CraftParams { ME = 0m, TE = 0m, FacilityMatMul = 1m, FacilityTimeMul = 1m, TaxRate = 0m },
+                Reaction = new CraftParams { ME = 0m, TE = 0m, FacilityMatMul = 1m, FacilityTimeMul = 1m, TaxRate = 0m }
+            };
+
+            // Загрузка рецептов из SDE → каталог
+            _catalog.LoadReactions(MapFromSdeReactions());
+            _catalog.LoadManufacturing(MapFromSdeManufacturing());
+        }
+
+        private IEnumerable<Recipe> MapFromSdeReactions()
+        {
+            foreach (var rec in _sde.Recipes.Where(r => r.ActivityID == ACT_REACTION))
+            {
+                var main = rec.Products.FirstOrDefault();
+                if (main == null) continue;
+
+                yield return new Recipe
+                {
+                    Id = new RecipeId
+                    {
+                        Kind = CraftKind.Reaction,
+                        BlueprintTypeId = 0, // в агрегате может не быть ID формулы — нам не критично
+                        Activity = Activity.Reaction
+                    },
+                    Output = new Product
+                    {
+                        Item = new ItemRef { TypeId = main.TypeID, Name = FindItem(main.TypeID)?.Name },
+                        QtyPerRun = main.Quantity
+                    },
+                    Inputs = rec.Materials
+                        .Select(m => new Ingredient
+                        {
+                            Item = new ItemRef { TypeId = m.TypeID, Name = FindItem(m.TypeID)?.Name },
+                            QtyPerRun = m.Quantity
+                        })
+                        .ToList(),
+                    Byproducts = rec.Products.Skip(1)
+                        .Select(p => new Product
+                        {
+                            Item = new ItemRef { TypeId = p.TypeID, Name = FindItem(p.TypeID)?.Name },
+                            QtyPerRun = p.Quantity
+                        })
+                        .ToList(),
+                    BaseTimePerRun = TimeSpan.FromSeconds(Math.Max(1, rec.BaseTimeSeconds))
+                };
+            }
+        }
+
+        private IEnumerable<Recipe> MapFromSdeManufacturing()
+        {
+            foreach (var rec in _sde.Recipes.Where(r => r.ActivityID == ACT_MANUFACTURING))
+            {
+                var main = rec.Products.FirstOrDefault();
+                if (main == null) continue;
+
+                yield return new Recipe
+                {
+                    Id = new RecipeId
+                    {
+                        Kind = CraftKind.Blueprint,
+                        BlueprintTypeId = 0,
+                        Activity = Activity.Manufacturing
+                    },
+                    Output = new Product
+                    {
+                        Item = new ItemRef { TypeId = main.TypeID, Name = FindItem(main.TypeID)?.Name },
+                        QtyPerRun = main.Quantity
+                    },
+                    Inputs = rec.Materials
+                        .Select(m => new Ingredient
+                        {
+                            Item = new ItemRef { TypeId = m.TypeID, Name = FindItem(m.TypeID)?.Name },
+                            QtyPerRun = m.Quantity
+                        })
+                        .ToList(),
+                    Byproducts = rec.Products.Skip(1)
+                        .Select(p => new Product
+                        {
+                            Item = new ItemRef { TypeId = p.TypeID, Name = FindItem(p.TypeID)?.Name },
+                            QtyPerRun = p.Quantity
+                        })
+                        .ToList(),
+                    BaseTimePerRun = TimeSpan.FromSeconds(Math.Max(1, rec.BaseTimeSeconds))
+                };
+            }
         }
 
         private void ApplyDarkTweaks()
@@ -236,6 +339,17 @@ namespace TestForm
             _lastBpoTEpct = bpoTE * 100.0;
             _lastModeIndex = mode;
 
+            // применим ME/TE в набор параметров ядра
+            _ps.Reaction.ME = (decimal)reactME;
+            _ps.Reaction.TE = (decimal)reactTE;
+            _ps.Reaction.FacilityMatMul = 1m;
+            _ps.Reaction.FacilityTimeMul = 1m;
+
+            _ps.Manufacturing.ME = (decimal)bpoME;
+            _ps.Manufacturing.TE = (decimal)bpoTE;
+            _ps.Manufacturing.FacilityMatMul = 1m;
+            _ps.Manufacturing.FacilityTimeMul = 1m;
+
             try
             {
                 var rows = new List<RowVM>(256);
@@ -244,9 +358,9 @@ namespace TestForm
                 if (mode == 0)
                     BuildModeOre(rows, needPrices, refineYield);
                 else if (mode == 1)
-                    BuildModeReactions(rows, needPrices, reactME, reactTE);
+                    BuildModeReactions(rows, needPrices);         // <— теперь через CraftPlanner (Mixed/Reaction)
                 else
-                    BuildModeBlueprints(rows, needPrices, bpoME, bpoTE);
+                    BuildModeBlueprints(rows, needPrices);        // <— гибрид: корень BPO, дети только Reaction
 
                 foreach (var r in rows)
                 {
@@ -261,7 +375,7 @@ namespace TestForm
 
                 foreach (var r in rows)
                 {
-                    // входы BUY (уже развернутые до базовых), ME применяется при разворачивании
+                    // входы BUY
                     double inputsBuy = 0;
                     foreach (var i in r.Inputs)
                     {
@@ -345,7 +459,7 @@ namespace TestForm
             FormatGrid(grid);
         }
 
-        // =============== РЕЖИМ 0: РУДА -> МАТЕРИАЛЫ ===============
+        // =============== РЕЖИМ 0: РУДА -> МАТЕРИАЛЫ (без изменений) ===============
         private void BuildModeOre(List<RowVM> rows, HashSet<int> needPrices, double refineYield)
         {
             var ores = _sde.Items.Values
@@ -394,17 +508,19 @@ namespace TestForm
             }
         }
 
-        // =============== РЕЖИМ 1: КОНЕЧНЫЕ РЕАКЦИИ ===============
-        private void BuildModeReactions(List<RowVM> rows, HashSet<int> needPrices, double reactME, double reactTE)
+        // =============== РЕЖИМ 1: КОНЕЧНЫЕ РЕАКЦИИ (через CraftPlanner Mixed / Reaction) ===============
+        private void BuildModeReactions(List<RowVM> rows, HashSet<int> needPrices)
         {
             var reactionRecipes = _sde.Recipes.Where(r => r.ActivityID == ACT_REACTION).ToList();
+            var allReactionInputs = new HashSet<int>(reactionRecipes.SelectMany(r => r.Materials).Select(m => m.TypeID));
+            var terminal = reactionRecipes.Where(r => r.Products.All(p => !allReactionInputs.Contains(p.TypeID))).ToList();
 
-            var allReactionInputs = new HashSet<int>(
-                reactionRecipes.SelectMany(r => r.Materials).Select(m => m.TypeID));
-
-            var terminal = reactionRecipes
-                .Where(r => r.Products.All(p => !allReactionInputs.Contains(p.TypeID)))
-                .ToList();
+            var opt = new BuildOptions
+            {
+                Mode = KindResolutionMode.Mixed,
+                AllowedActivities = new List<Activity> { Activity.Reaction },
+                AllowReplacements = false
+            };
 
             foreach (var rec in terminal)
             {
@@ -412,6 +528,13 @@ namespace TestForm
                 if (main == null) continue;
 
                 var item = FindItem(main.TypeID);
+                var root = _planner.BuildMixed(
+                    new ItemRef { TypeId = main.TypeID, Name = item?.Name },
+                    targetQty: (decimal)Math.Max(1, main.Quantity), // на 1 цикл
+                    ps: _ps,
+                    opt: opt);
+
+                var flat = CraftAnalysis.FlattenLeaves(root); // базовые ресурсы
                 var row = new RowVM
                 {
                     ProductTypeID = main.TypeID,
@@ -419,7 +542,7 @@ namespace TestForm
                     IsReactionMode = true,
                     UnitsPerCycle = main.Quantity,
                     UnitVolume = item?.Volume ?? 0,
-                    CycleSecondsEff = Math.Max(1, rec.BaseTimeSeconds) * (1.0 - reactTE)
+                    CycleSecondsEff = CraftAnalysis.ComputeNodeTime(root, _round).TotalSeconds
                 };
 
                 if (_hist.TryGet(main.TypeID, out var rating, out var avg))
@@ -428,23 +551,22 @@ namespace TestForm
                     row.AvgVolume = avg;
                 }
 
-                // Разворачиваем входы «до базы»
-                var baseInputs = new List<PartLine>();
-                foreach (var m in rec.Materials)
-                    DecomposeToBaseInputs(m.TypeID, m.Quantity, reactME, baseInputs, new HashSet<int>());
+                row.Inputs = flat
+                    .Select(kv => new PartLine
+                    {
+                        TypeID = kv.Key,
+                        Name = FindItem(kv.Key)?.Name ?? kv.Key.ToString(),
+                        Quantity = (double)kv.Value
+                    })
+                    .OrderBy(p => p.Name)
+                    .ToList();
 
-                row.Inputs = Aggregate(baseInputs);
                 foreach (var i in row.Inputs) needPrices.Add(i.TypeID);
 
                 foreach (var p in rec.Products)
                 {
                     var it = FindItem(p.TypeID);
-                    row.Outputs.Add(new PartLine
-                    {
-                        TypeID = p.TypeID,
-                        Name = it?.Name ?? p.TypeID.ToString(),
-                        Quantity = p.Quantity
-                    });
+                    row.Outputs.Add(new PartLine { TypeID = p.TypeID, Name = it?.Name ?? p.TypeID.ToString(), Quantity = p.Quantity });
                     needPrices.Add(p.TypeID);
                 }
 
@@ -452,19 +574,20 @@ namespace TestForm
             }
         }
 
-        // =============== РЕЖИМ 2: BPO (где входы — продукты реакций) ===============
-        private void BuildModeBlueprints(List<RowVM> rows, HashSet<int> needPrices, double bpoME, double bpoTE)
+        // =============== РЕЖИМ 2: BPO (корень Manufacturing, разворачиваем ТОЛЬКО реакционные входы) ===============
+        private void BuildModeBlueprints(List<RowVM> rows, HashSet<int> needPrices)
         {
             var mfg = _sde.Recipes.Where(r => r.ActivityID == ACT_MANUFACTURING).ToList();
+            var reactionProducts = new HashSet<int>(_sde.Recipes.Where(r => r.ActivityID == ACT_REACTION).SelectMany(r => r.Products).Select(p => p.TypeID));
+            var onlyWithReactionInputs = mfg.Where(r => r.Materials.Any(m => reactionProducts.Contains(m.TypeID))).ToList();
 
-            var reactionProducts = new HashSet<int>(
-                _sde.Recipes.Where(r => r.ActivityID == ACT_REACTION)
-                            .SelectMany(r => r.Products)
-                            .Select(p => p.TypeID));
-
-            var onlyWithReactionInputs = mfg
-                .Where(r => r.Materials.Any(m => reactionProducts.Contains(m.TypeID)))
-                .ToList();
+            // дочернее разворачивание — только реакциями
+            var childOpt = new BuildOptions
+            {
+                Mode = KindResolutionMode.Mixed,
+                AllowedActivities = new List<Activity> { Activity.Reaction },
+                AllowReplacements = false
+            };
 
             foreach (var rec in onlyWithReactionInputs)
             {
@@ -479,7 +602,7 @@ namespace TestForm
                     IsBlueprintMode = true,
                     UnitsPerCycle = main.Quantity,
                     UnitVolume = item?.Volume ?? 0,
-                    CycleSecondsEff = Math.Max(1, rec.BaseTimeSeconds) * (1.0 - bpoTE)
+                    CycleSecondsEff = Math.Max(1, rec.BaseTimeSeconds) * (1.0 - (double)_ps.Manufacturing.TE) // время корневого BPO
                 };
 
                 if (_hist.TryGet(main.TypeID, out var rating, out var avg))
@@ -488,9 +611,39 @@ namespace TestForm
                     row.AvgVolume = avg;
                 }
 
+                // Собираем базовый BOM: на 1 цикл корневого BPO применяем BPO-ME к материалам,
+                // и если материал производим реакцией — разворачиваем его через планировщик (Reaction-only).
                 var baseInputs = new List<PartLine>();
                 foreach (var m in rec.Materials)
-                    DecomposeToBaseInputs(m.TypeID, m.Quantity, bpoME, baseInputs, new HashSet<int>());
+                {
+                    var needPerRun = m.Quantity * (1.0 - (double)_ps.Manufacturing.ME); // ME корня (BPO)
+
+                    if (_catalog.ResolveByProductOrNull(m.TypeID, Activity.Reaction) != null)
+                    {
+                        var subRoot = _planner.BuildMixed(
+                            new ItemRef { TypeId = m.TypeID, Name = FindItem(m.TypeID)?.Name },
+                            targetQty: (decimal)needPerRun,
+                            ps: _ps,                               // Важно: используем текущие _ps (ME реакций берём из полей "Reactions" формы если хочешь — сейчас он равен BPO-ME только если ты так установишь)
+                            opt: childOpt);
+
+                        var flat = CraftAnalysis.FlattenLeaves(subRoot);
+                        baseInputs.AddRange(flat.Select(kv => new PartLine
+                        {
+                            TypeID = kv.Key,
+                            Name = FindItem(kv.Key)?.Name ?? kv.Key.ToString(),
+                            Quantity = (double)kv.Value
+                        }));
+                    }
+                    else
+                    {
+                        baseInputs.Add(new PartLine
+                        {
+                            TypeID = m.TypeID,
+                            Name = FindItem(m.TypeID)?.Name ?? m.TypeID.ToString(),
+                            Quantity = needPerRun
+                        });
+                    }
+                }
 
                 row.Inputs = Aggregate(baseInputs);
                 foreach (var i in row.Inputs) needPrices.Add(i.TypeID);
@@ -511,44 +664,6 @@ namespace TestForm
             }
         }
 
-        // ---- Развёртка входа в базовые позиции ----
-        // Если вход — продукт реакции, раскрываем его материалы рекурсивно (учитывая ME).
-        // Иначе — это «база»: либо лунные материалы/минералы/пр., либо (если включено) руды,
-        // подобранные под нужный базовый материал через рефайн + фильтр по ликвидности.
-        private void DecomposeToBaseInputs(int typeId, double qty, double mePercent,
-                                           List<PartLine> sink, HashSet<int> guard)
-        {
-            // защита от циклов
-            if (!guard.Add(typeId)) return;
-
-            // если это продукт реакции — раскрываем
-            if (_reactionByProduct.TryGetValue(typeId, out var rx))
-            {
-                // во сколько раз нужно масштабировать материалы рецепта
-                var mainOut = rx.Products.FirstOrDefault() ?? new RecipeLine { Quantity = 1 };
-                double k = qty / Math.Max(1, (double)mainOut.Quantity);
-
-                foreach (var m in rx.Materials)
-                {
-                    // применяем ME текущего узла
-                    double need = k * m.Quantity * (1.0 - mePercent);
-                    DecomposeToBaseInputs(m.TypeID, need, mePercent, sink, guard);
-                }
-                return;
-            }
-
-            // иначе это не продукт реакции — базовый ресурс
-            // если включена покупка руды, пытаемся заменить материал на руду
-            if (chkUseOre.Checked)
-            {
-                var replaced = TryReplaceMaterialWithOre(typeId, qty, mePercent);
-                if (replaced != null) { sink.Add(replaced); return; }
-            }
-
-            var it = FindItem(typeId);
-            sink.Add(new PartLine { TypeID = typeId, Name = it?.Name ?? typeId.ToString(), Quantity = qty });
-        }
-
         // объединить одинаковые позиции (после развертки)
         private List<PartLine> Aggregate(IEnumerable<PartLine> src)
             => src.GroupBy(x => x.TypeID)
@@ -560,54 +675,6 @@ namespace TestForm
                   })
                   .OrderBy(x => x.Name)
                   .ToList();
-
-        // попытка заменить лунный материал на руду (с учётом ликвидности)
-        private PartLine? TryReplaceMaterialWithOre(int matTypeId, double matQty, double mePercent)
-        {
-            // найдём все руды, которые при рефайне дают нужный материал
-            var ores = _sde.Reprocessing
-                .Where(kv => kv.Value.Outputs.Any(o => o.TypeID == matTypeId))
-                .Select(kv => kv.Key)
-                .Select(FindItem)
-                .Where(it => it != null)
-                .Cast<ItemExtDTO>()
-                .ToList();
-
-            if (ores.Count == 0) return null;
-
-            double minBn = (double)numMinOreRatingBn.Value;
-            if (minBn > 0)
-                ores = ores.Where(o => _hist.TryRatingBn(o.TypeID) >= minBn).ToList();
-
-            if (ores.Count == 0) return null;
-
-            ItemExtDTO? pick = null;
-            double bestUnits = double.MaxValue;
-
-            foreach (var ore in ores)
-            {
-                if (!_sde.Reprocessing.TryGetValue(ore.TypeID, out var plan)) continue;
-                var portion = Math.Max(1, plan.PortionSize);
-
-                var outLine = plan.Outputs.FirstOrDefault(o => o.TypeID == matTypeId);
-                if (outLine == null) continue;
-
-                var yield = (double)numRefine.Value / 100.0;
-                var perOre = (outLine.Quantity / (double)portion) * yield;
-                if (perOre <= 0) continue;
-
-                // ME влияет на потребность материала, следовательно и на руду
-                var needOre = (matQty * (1.0 - mePercent)) / perOre;
-                if (needOre < bestUnits)
-                {
-                    bestUnits = needOre;
-                    pick = ore;
-                }
-            }
-
-            if (pick == null) return null;
-            return new PartLine { TypeID = pick.TypeID, Name = pick.Name, Quantity = bestUnits };
-        }
 
         private ItemExtDTO? FindItem(int typeId)
             => _sde.Items.TryGetValue(typeId, out var it) ? it : null;
@@ -624,13 +691,44 @@ namespace TestForm
             if (e.RowIndex < 0 || e.RowIndex >= _lastRows.Count) return;
             var r = _lastRows[e.RowIndex];
 
+            // Для деталей строим "чистый" BOM на 1 цикл в Strict:
+            var inputsStrict = new List<(int TypeID, string Name, double Qty)>();
+            if (r.IsReactionMode)
+            {
+                var perRun = CraftFacade.GetResourcesPerRunStrict(
+                    _planner,
+                    new ItemRef { TypeId = r.ProductTypeID, Name = r.Name },
+                    Activity.Reaction,
+                    _ps,
+                    _round);
+
+                inputsStrict = perRun.Select(kv => (kv.Key, FindItem(kv.Key)?.Name ?? kv.Key.ToString(), (double)kv.Value)).ToList();
+            }
+            else if (r.IsBlueprintMode)
+            {
+                var perRun = CraftFacade.GetResourcesPerRunStrict(
+                    _planner,
+                    new ItemRef { TypeId = r.ProductTypeID, Name = r.Name },
+                    Activity.Manufacturing,
+                    _ps,
+                    _round);
+
+                inputsStrict = perRun.Select(kv => (kv.Key, FindItem(kv.Key)?.Name ?? kv.Key.ToString(), (double)kv.Value)).ToList();
+            }
+            else
+            {
+                // режим руды — показываем как есть (вход=руда)
+                inputsStrict = r.Inputs.Select(i => (i.TypeID, i.Name, i.Quantity)).ToList();
+            }
+
             var payload = new
             {
                 ProductTypeID = r.ProductTypeID,
                 Name = r.Name,
                 UnitsPerCycle = r.UnitsPerCycle,
                 CycleSecondsEff = r.CycleSecondsEff,
-                Inputs = r.Inputs.Select(i => new { i.TypeID, i.Name, Quantity = i.Quantity, i.UnitPrice, i.Sum }).ToList(),
+                // входы/выходы (цены не подгружаем заново в деталях, там формат N0/N3)
+                Inputs = inputsStrict.Select(x => new { TypeID = x.TypeID, Name = x.Name, Quantity = x.Qty, UnitPrice = 0.0, Sum = 0.0 }).ToList(),
                 Outputs = r.Outputs.Select(o => new { o.TypeID, o.Name, Quantity = o.Quantity, o.UnitPrice, o.Sum }).ToList(),
                 ChainNotes = Array.Empty<string>()
             };
@@ -776,24 +874,11 @@ namespace TestForm
                     _lastReactTEpct = st.ReactTEpct;
                     _lastBpoMEpct = st.BpoMEpct;
                     _lastBpoTEpct = st.BpoTEpct;
-                    return;
                 }
             }
             catch { }
-
-            // дефолты
-            _lastModeIndex = 1;
-            _lastUseOreIfLiquid = true;
-            _lastMinOreRatingBn = 0;
-            _lastRefineYield = 55.0;
-            _lastSalesTaxPct = 1.5;
-            _lastReactMEpct = 0;
-            _lastReactTEpct = 0;
-            _lastBpoMEpct = 0;
-            _lastBpoTEpct = 0;
         }
 
-        [Serializable]
         private sealed class SavedState : ResourceCaching
         {
             public int ModeIndex { get; set; }

@@ -21,10 +21,10 @@ namespace TestForm
         private Label lblMinOreHint;
 
         private GroupBox gbRefine;
-        private Label lblRefinePct;
+        private Label lblRefine;
         private NumericUpDown numRefine;
 
-        private GroupBox gbTaxes;
+        private GroupBox gbSales;
         private Label lblSalesTax;
         private NumericUpDown numSalesTax;
 
@@ -70,10 +70,10 @@ namespace TestForm
             lblMinOreHint = new Label();
 
             gbRefine = new GroupBox();
-            lblRefinePct = new Label();
+            lblRefine = new Label();
             numRefine = new NumericUpDown();
 
-            gbTaxes = new GroupBox();
+            gbSales = new GroupBox();
             lblSalesTax = new Label();
             numSalesTax = new NumericUpDown();
 
@@ -95,12 +95,17 @@ namespace TestForm
             statusStrip = new StatusStrip();
             statusLabel = new ToolStripStatusLabel();
 
-            // panelTop
-            panelTop.Dock = DockStyle.Top;
-            panelTop.Height = 165;
-            panelTop.Padding = new Padding(8);
+            // ---- form ----
+            this.SuspendLayout();
+            this.Text = "Moon Industry";
+            this.ClientSize = new Size(1280, 800);
 
-            // gbMode
+            // ---- panelTop ----
+            panelTop.Dock = DockStyle.Top;
+            panelTop.Height = 160;
+            panelTop.Padding = new Padding(6);
+
+            // ---- gbMode ----
             gbMode.Text = "Режим";
             gbMode.Width = 250;
             gbMode.Height = 70;
@@ -117,8 +122,8 @@ namespace TestForm
             rbModeReactions.Top = 40;
             rbModeReactions.AutoSize = true;
 
-            rbModeBlueprints.Text = "BPO с реакциями";
-            rbModeBlueprints.Left = 140;
+            rbModeBlueprints.Text = "Чертежи (BPO/BPC)";
+            rbModeBlueprints.Left = 120;
             rbModeBlueprints.Top = 40;
             rbModeBlueprints.AutoSize = true;
 
@@ -126,19 +131,19 @@ namespace TestForm
             gbMode.Controls.Add(rbModeReactions);
             gbMode.Controls.Add(rbModeBlueprints);
 
-            // gbOre
-            gbOre.Text = "Руда (ликвидность)";
-            gbOre.Width = 290;
+            // ---- gbOre ----
+            gbOre.Text = "Руда/ликвидность";
+            gbOre.Width = 360;
             gbOre.Height = 70;
-            gbOre.Left = gbMode.Right + 8;
-            gbOre.Top = gbMode.Top;
+            gbOre.Left = gbMode.Right + 10;
+            gbOre.Top = 8;
 
-            chkUseOre.Text = "Пробовать покупать руду";
+            chkUseOre.Text = "Только ликвидная руда";
             chkUseOre.Left = 12;
             chkUseOre.Top = 20;
             chkUseOre.AutoSize = true;
 
-            lblMinOreRatingBn.Text = "Мин. Rating (в млрд):";
+            lblMinOreRatingBn.Text = "мин. рейтинг (млрд):";
             lblMinOreRatingBn.Left = 12;
             lblMinOreRatingBn.Top = 42;
             lblMinOreRatingBn.AutoSize = true;
@@ -160,173 +165,165 @@ namespace TestForm
             gbOre.Controls.Add(numMinOreRatingBn);
             gbOre.Controls.Add(lblMinOreHint);
 
-            // gbRefine
+            // ---- gbRefine ----
             gbRefine.Text = "Рефайн";
             gbRefine.Width = 160;
             gbRefine.Height = 70;
-            gbRefine.Left = gbOre.Right + 8;
-            gbRefine.Top = gbMode.Top;
+            gbRefine.Left = gbOre.Right + 10;
+            gbRefine.Top = 8;
 
-            lblRefinePct.Text = "Yield %:";
-            lblRefinePct.Left = 12;
-            lblRefinePct.Top = 30;
-            lblRefinePct.AutoSize = true;
+            lblRefine.Text = "Выход, %:";
+            lblRefine.Left = 12;
+            lblRefine.Top = 20;
+            lblRefine.AutoSize = true;
 
-            numRefine.Left = 70;
-            numRefine.Top = 26;
-            numRefine.Width = 70;
-            numRefine.DecimalPlaces = 0;
-            numRefine.Minimum = 0;
+            numRefine.Left = 80;
+            numRefine.Top = 18;
+            numRefine.Width = 60;
             numRefine.Maximum = 100;
-            numRefine.Value = 55;
+            numRefine.Minimum = 0;
+            numRefine.DecimalPlaces = 2;
+            numRefine.Value = 50;
 
-            gbRefine.Controls.Add(lblRefinePct);
+            gbRefine.Controls.Add(lblRefine);
             gbRefine.Controls.Add(numRefine);
 
-            // gbTaxes
-            gbTaxes.Text = "Налоги";
-            gbTaxes.Width = 160;
-            gbTaxes.Height = 70;
-            gbTaxes.Left = gbRefine.Right + 8;
-            gbTaxes.Top = gbMode.Top;
+            // ---- gbSales ----
+            gbSales.Text = "Продажи";
+            gbSales.Width = 160;
+            gbSales.Height = 70;
+            gbSales.Left = gbRefine.Right + 10;
+            gbSales.Top = 8;
 
-            lblSalesTax.Text = "Продажа %:";
+            lblSalesTax.Text = "Налог, %:";
             lblSalesTax.Left = 12;
-            lblSalesTax.Top = 30;
+            lblSalesTax.Top = 20;
             lblSalesTax.AutoSize = true;
 
-            numSalesTax.Left = 90;
-            numSalesTax.Top = 26;
+            numSalesTax.Left = 80;
+            numSalesTax.Top = 18;
             numSalesTax.Width = 60;
-            numSalesTax.DecimalPlaces = 2;
-            numSalesTax.Minimum = 0;
             numSalesTax.Maximum = 100;
-            numSalesTax.Increment = 0.10M;
-            numSalesTax.Value = 1.50M;
+            numSalesTax.Minimum = 0;
+            numSalesTax.DecimalPlaces = 2;
+            numSalesTax.Value = 1;
 
-            gbTaxes.Controls.Add(lblSalesTax);
-            gbTaxes.Controls.Add(numSalesTax);
+            gbSales.Controls.Add(lblSalesTax);
+            gbSales.Controls.Add(numSalesTax);
 
-            // gbReact
-            gbReact.Text = "Реакции (ME/TE)";
-            gbReact.Width = 220;
+            // ---- gbReact ----
+            gbReact.Text = "Reactions ME/TE";
+            gbReact.Width = 200;
             gbReact.Height = 70;
-            gbReact.Left = gbMode.Left;
+            gbReact.Left = 8;
             gbReact.Top = gbMode.Bottom + 8;
 
-            lblReactME.Text = "ME %:";
+            lblReactME.Text = "ME, %:";
             lblReactME.Left = 12;
-            lblReactME.Top = 30;
+            lblReactME.Top = 22;
             lblReactME.AutoSize = true;
 
             numReactME.Left = 60;
-            numReactME.Top = 26;
+            numReactME.Top = 20;
             numReactME.Width = 60;
-            numReactME.DecimalPlaces = 2;
-            numReactME.Minimum = 0;
             numReactME.Maximum = 100;
+            numReactME.Minimum = 0;
+            numReactME.DecimalPlaces = 2;
 
-            lblReactTE.Text = "TE %:";
-            lblReactTE.Left = 130;
-            lblReactTE.Top = 30;
+            lblReactTE.Text = "TE, %:";
+            lblReactTE.Left = 12;
+            lblReactTE.Top = 42;
             lblReactTE.AutoSize = true;
 
-            numReactTE.Left = 170;
-            numReactTE.Top = 26;
-            numReactTE.Width = 40;
-            numReactTE.DecimalPlaces = 2;
-            numReactTE.Minimum = 0;
+            numReactTE.Left = 60;
+            numReactTE.Top = 40;
+            numReactTE.Width = 60;
             numReactTE.Maximum = 100;
+            numReactTE.Minimum = 0;
+            numReactTE.DecimalPlaces = 2;
 
             gbReact.Controls.Add(lblReactME);
             gbReact.Controls.Add(numReactME);
             gbReact.Controls.Add(lblReactTE);
             gbReact.Controls.Add(numReactTE);
 
-            // gbBpo
-            gbBpo.Text = "BPO (ME/TE)";
-            gbBpo.Width = 220;
+            // ---- gbBpo ----
+            gbBpo.Text = "Blueprints ME/TE";
+            gbBpo.Width = 200;
             gbBpo.Height = 70;
-            gbBpo.Left = gbReact.Right + 8;
-            gbBpo.Top = gbReact.Top;
+            gbBpo.Left = gbReact.Right + 10;
+            gbBpo.Top = gbMode.Bottom + 8;
 
-            lblBpoME.Text = "ME %:";
+            lblBpoME.Text = "ME, %:";
             lblBpoME.Left = 12;
-            lblBpoME.Top = 30;
+            lblBpoME.Top = 22;
             lblBpoME.AutoSize = true;
 
             numBpoME.Left = 60;
-            numBpoME.Top = 26;
+            numBpoME.Top = 20;
             numBpoME.Width = 60;
-            numBpoME.DecimalPlaces = 2;
-            numBpoME.Minimum = 0;
             numBpoME.Maximum = 100;
+            numBpoME.Minimum = 0;
+            numBpoME.DecimalPlaces = 2;
 
-            lblBpoTE.Text = "TE %:";
-            lblBpoTE.Left = 130;
-            lblBpoTE.Top = 30;
+            lblBpoTE.Text = "TE, %:";
+            lblBpoTE.Left = 12;
+            lblBpoTE.Top = 42;
             lblBpoTE.AutoSize = true;
 
-            numBpoTE.Left = 170;
-            numBpoTE.Top = 26;
-            numBpoTE.Width = 40;
-            numBpoTE.DecimalPlaces = 2;
-            numBpoTE.Minimum = 0;
+            numBpoTE.Left = 60;
+            numBpoTE.Top = 40;
+            numBpoTE.Width = 60;
             numBpoTE.Maximum = 100;
+            numBpoTE.Minimum = 0;
+            numBpoTE.DecimalPlaces = 2;
 
             gbBpo.Controls.Add(lblBpoME);
             gbBpo.Controls.Add(numBpoME);
             gbBpo.Controls.Add(lblBpoTE);
             gbBpo.Controls.Add(numBpoTE);
 
-            // btnCalc
-            btnCalc.Text = "Рассчитать";
-            btnCalc.Width = 120;
-            btnCalc.Height = 30;
-            btnCalc.Left = gbBpo.Right + 16;
-            btnCalc.Top = gbBpo.Top + 18;
+            // ---- btnCalc ----
+            btnCalc.Text = "Пересчитать";
+            btnCalc.Width = 140;
+            btnCalc.Height = 40;
+            btnCalc.Left = gbBpo.Right + 20;
+            btnCalc.Top = gbMode.Bottom + 16;
 
-            // grid
+            // ---- grid ----
+            grid.Dock = DockStyle.Fill;
+            grid.ReadOnly = true;
             grid.AllowUserToAddRows = false;
             grid.AllowUserToDeleteRows = false;
-            grid.AllowUserToOrderColumns = true;
-            grid.ReadOnly = true;
-            grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            grid.MultiSelect = false;
-            grid.Dock = DockStyle.Fill;
+            grid.AllowUserToResizeRows = false;
             grid.RowHeadersVisible = false;
-            grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells;
+            grid.MultiSelect = false;
+            grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            grid.AutoGenerateColumns = false;
 
-            // progress
+            // ---- progress + status ----
             progress.Dock = DockStyle.Bottom;
-            progress.Height = 6;
-            progress.Minimum = 0;
-            progress.Maximum = 100;
+            progress.Height = 8;
 
-            // statusStrip
             statusStrip.Dock = DockStyle.Bottom;
             statusLabel.Text = "Готово";
             statusStrip.Items.Add(statusLabel);
 
-            // Compose panelTop
+            // ---- layout ----
             panelTop.Controls.Add(gbMode);
             panelTop.Controls.Add(gbOre);
             panelTop.Controls.Add(gbRefine);
-            panelTop.Controls.Add(gbTaxes);
+            panelTop.Controls.Add(gbSales);
             panelTop.Controls.Add(gbReact);
             panelTop.Controls.Add(gbBpo);
             panelTop.Controls.Add(btnCalc);
-
-            // Form
-            this.Text = "Moon Industry — аналитика реакций/BPO/руды";
-            this.StartPosition = FormStartPosition.CenterParent;
-            this.Width = 1300;
-            this.Height = 800;
 
             this.Controls.Add(grid);
             this.Controls.Add(progress);
             this.Controls.Add(statusStrip);
             this.Controls.Add(panelTop);
+
+            this.ResumeLayout(false);
         }
     }
 }

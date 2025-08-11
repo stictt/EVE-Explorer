@@ -14,7 +14,6 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
-
 namespace TestForm
 {
     public partial class MoonItemDetailsForm : Form
@@ -26,7 +25,7 @@ namespace TestForm
             public string Name { get; set; } = "";
             public double Qty { get; set; }
             public double UnitPrice { get; set; }
-            public double Sum => Qty * UnitPrice;
+            public double Sum { get { return Qty * UnitPrice; } }
         }
 
         private sealed class Header
@@ -37,8 +36,8 @@ namespace TestForm
             public double CycleSeconds { get; set; }
         }
 
-        private readonly BindingList<LineVM> _inputs = new();
-        private readonly BindingList<LineVM> _outputs = new();
+        private readonly BindingList<LineVM> _inputs = new BindingList<LineVM>();
+        private readonly BindingList<LineVM> _outputs = new BindingList<LineVM>();
 
         public MoonItemDetailsForm(object payload)
         {
@@ -54,8 +53,8 @@ namespace TestForm
             foreach (var o in outs) _outputs.Add(o);
 
             // шапка/итоги/биндинги
-            Text = $"{head.Name} [{head.ProductTypeID}] — детали";
-            lblHeader.Text = $"шт/цикл: {head.UnitsPerCycle:N0} • сек/цикл: {head.CycleSeconds:N0}";
+            Text = head.Name + " [" + head.ProductTypeID + "] — детали";
+            lblHeader.Text = "шт/цикл: " + head.UnitsPerCycle.ToString("N0") + " • сек/цикл: " + head.CycleSeconds.ToString("N0");
 
             gridIn.DataSource = _inputs;
             gridOut.DataSource = _outputs;
@@ -63,24 +62,26 @@ namespace TestForm
             BuildColumns(gridOut);
 
             RecalcTotalsAndText(head);
+
+            // адекватная ширина панелей снизу
+            this.Shown += (_, __) => SafeSetSplitterDistance();
+            splitBottom.SizeChanged += (_, __) => SafeSetSplitterDistance();
         }
+
+        // аккуратно делим нижнюю область 50/50, соблюдая минимумы
         private void SafeSetSplitterDistance()
         {
-            // если контрол ещё не отрисован – смысла нет
             if (!splitBottom.IsHandleCreated) return;
 
             int w = splitBottom.ClientSize.Width;
             if (w <= 0) return;
 
-            // возьмём реальные минимумы
             int p1 = Math.Max(120, splitBottom.Panel1MinSize);
             int p2 = Math.Max(120, splitBottom.Panel2MinSize);
 
-            // допустимый диапазон
             int min = p1;
             int max = Math.Max(p1, w - p2);
 
-            // желаем пополам
             int target = w / 2;
             if (target < min) target = min;
             if (target > max) target = max;
@@ -91,102 +92,35 @@ namespace TestForm
             }
             catch
             {
-                // на крайний случай: временно ослабим минимумы
                 splitBottom.Panel1MinSize = 0;
                 splitBottom.Panel2MinSize = 0;
                 splitBottom.SplitterDistance = w / 2;
             }
         }
-        // MoonItemDetailsForm.cs  (добавьте внутрь класса)
-        protected override void OnLoad(EventArgs e)
-        {
-            base.OnLoad(e);
-            SafeSetSplitterDistance();
-            // на всякий случай подстрахуемся при ресайзе
-            this.Resize += (_, __) => SafeSetSplitterDistance();
-        }
-        // ========= helpers =========
 
         private void TryApplyDark()
         {
-            try { UiStyle.ApplyDark(this); } catch { }
-
-            // чуть контраста заголовкам
-            lblHeader.ForeColor = Color.Gainsboro;
-            lblInputsTotal.ForeColor = Color.Gainsboro;
-            lblOutputsTotal.ForeColor = Color.Gainsboro;
-
-            foreach (var g in new[] { gridIn, gridOut })
+            try
             {
-                g.EnableHeadersVisualStyles = false;
-                g.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(45, 45, 48);
-                g.ColumnHeadersDefaultCellStyle.ForeColor = Color.Gainsboro;
+                // твой хелпер, если есть в проекте
+                var t = Type.GetType("UiStyle");
+                var m = t?.GetMethod("ApplyDark", BindingFlags.Public | BindingFlags.Static);
+                if (m != null) m.Invoke(null, new object[] { this });
             }
-        }
+            catch { /* необязательно */ }
 
-        private static Header ExtractHeader(object obj)
-        {
-            return new Header
-            {
-                ProductTypeID = (int)(GetProp(obj, "ProductTypeID") ?? 0),
-                Name = (string)(GetProp(obj, "Name") ?? ""),
-                UnitsPerCycle = ToDouble(GetProp(obj, "UnitsPerCycle")),
-                CycleSeconds = ToDouble(GetProp(obj, "CycleSecondsEff"))
-            };
-        }
+            // подстройка цветов
+            Color caption = Color.Gainsboro;
+            lblHeader.ForeColor = caption;
+            lblInputsTotal.ForeColor = caption;
+            lblOutputsTotal.ForeColor = caption;
 
-        private static object? GetProp(object obj, string name)
-            => obj?.GetType().GetProperty(name, BindingFlags.Public | BindingFlags.Instance)?.GetValue(obj);
-
-        private static double ToDouble(object? v)
-        {
-            if (v == null) return 0;
-            if (v is double d) return d;
-            if (v is float f) return f;
-            if (v is decimal m) return (double)m;
-            if (v is int i) return i;
-            if (v is long l) return l;
-            if (double.TryParse(Convert.ToString(v, CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture, out var x))
-                return x;
-            return 0;
-        }
-
-        /// <summary>
-        /// Достаёт из obj (IEnumerable) список строк (TypeID, Name, Quantity, UnitPrice[, Sum]).
-        /// Подходит для анонимных типов из MoonIndustryForm.
-        /// </summary>
-        private static List<LineVM> ExtractLines(object? obj)
-        {
-            var list = new List<LineVM>();
-            if (obj is not IEnumerable en) return list;
-
-            foreach (var it in en)
-            {
-                if (it == null) continue;
-
-                int typeId = 0;
-                string name = "";
-                double qty = 0, unit = 0, sum = double.NaN;
-
-                var t = it.GetType();
-                var pType = t.GetProperty("TypeID");
-                var pName = t.GetProperty("Name");
-                var pQty = t.GetProperty("Quantity") ?? t.GetProperty("Qty");
-                var pUnit = t.GetProperty("UnitPrice");
-                var pSum = t.GetProperty("Sum");
-
-                if (pType != null) typeId = Convert.ToInt32(pType.GetValue(it) ?? 0);
-                if (pName != null) name = Convert.ToString(pName.GetValue(it) ?? "") ?? "";
-                if (pQty != null) qty = ToDouble(pQty.GetValue(it));
-                if (pUnit != null) unit = ToDouble(pUnit.GetValue(it));
-                if (pSum != null) sum = ToDouble(pSum.GetValue(it));
-
-                if (double.IsNaN(sum)) sum = qty * unit;
-                if (string.IsNullOrWhiteSpace(name)) name = typeId.ToString();
-
-                list.Add(new LineVM { TypeID = typeId, Name = name, Qty = qty, UnitPrice = unit });
-            }
-            return list;
+            gridIn.EnableHeadersVisualStyles = false;
+            gridOut.EnableHeadersVisualStyles = false;
+            gridIn.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(45, 45, 48);
+            gridOut.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(45, 45, 48);
+            gridIn.ColumnHeadersDefaultCellStyle.ForeColor = caption;
+            gridOut.ColumnHeadersDefaultCellStyle.ForeColor = caption;
         }
 
         private void BuildColumns(DataGridView g)
@@ -204,138 +138,249 @@ namespace TestForm
             g.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "Name",
-                HeaderText = "Name",
+                HeaderText = "Название",
                 AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
                 SortMode = DataGridViewColumnSortMode.Programmatic
             });
             g.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "Qty",
-                HeaderText = "Qty",
+                HeaderText = "Кол-во",
                 Width = 110,
-                DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "N0" },
-                SortMode = DataGridViewColumnSortMode.Programmatic
+                SortMode = DataGridViewColumnSortMode.Programmatic,
+                DefaultCellStyle = new DataGridViewCellStyle
+                {
+                    Alignment = DataGridViewContentAlignment.MiddleRight,
+                    Format = "N3"
+                }
             });
             g.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "UnitPrice",
-                HeaderText = "UnitPrice",
-                Width = 120,
-                DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "N0" },
-                SortMode = DataGridViewColumnSortMode.Programmatic
+                HeaderText = "Цена/шт",
+                Width = 110,
+                SortMode = DataGridViewColumnSortMode.Programmatic,
+                DefaultCellStyle = new DataGridViewCellStyle
+                {
+                    Alignment = DataGridViewContentAlignment.MiddleRight,
+                    Format = "N0"
+                }
             });
             g.Columns.Add(new DataGridViewTextBoxColumn
             {
                 DataPropertyName = "Sum",
-                HeaderText = "Sum",
-                Width = 140,
-                DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "N0" },
-                SortMode = DataGridViewColumnSortMode.Programmatic
+                HeaderText = "Сумма",
+                Width = 120,
+                SortMode = DataGridViewColumnSortMode.Programmatic,
+                DefaultCellStyle = new DataGridViewCellStyle
+                {
+                    Alignment = DataGridViewContentAlignment.MiddleRight,
+                    Format = "N0"
+                }
             });
 
-            g.ColumnHeaderMouseClick += (s, e) =>
-            {
-                var col = g.Columns[e.ColumnIndex];
-                var prop = col.DataPropertyName;
-                if (string.IsNullOrEmpty(prop)) return;
-
-                var list = (BindingList<LineVM>)g.DataSource!;
-                IEnumerable<LineVM> seq = list;
-
-                // простая смена направления при повторном клике
-                bool asc = col.HeaderCell.SortGlyphDirection != SortOrder.Ascending;
-                seq = asc ? list.OrderBy(x => GetPropValue(x, prop))
-                          : list.OrderByDescending(x => GetPropValue(x, prop));
-
-                g.DataSource = new BindingList<LineVM>(seq.ToList());
-                foreach (DataGridViewColumn c in g.Columns) c.HeaderCell.SortGlyphDirection = SortOrder.None;
-                col.HeaderCell.SortGlyphDirection = asc ? SortOrder.Ascending : SortOrder.Descending;
-            };
+            g.ColumnHeaderMouseClick -= Grid_ColumnHeaderMouseClick;
+            g.ColumnHeaderMouseClick += Grid_ColumnHeaderMouseClick;
         }
 
-        private static object? GetPropValue(object obj, string prop)
-            => obj.GetType().GetProperty(prop)?.GetValue(obj);
+        private void Grid_ColumnHeaderMouseClick(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            var g = (DataGridView)sender;
+            if (e.ColumnIndex < 0) return;
+
+            var col = g.Columns[e.ColumnIndex];
+            var prop = col.DataPropertyName;
+            if (string.IsNullOrEmpty(prop)) return;
+
+            var list = (BindingList<LineVM>)g.DataSource;
+            IEnumerable<LineVM> seq = list;
+
+            bool asc = col.HeaderCell.SortGlyphDirection != SortOrder.Ascending;
+            seq = asc ? list.OrderBy(x => GetPropValue(x, prop))
+                      : list.OrderByDescending(x => GetPropValue(x, prop));
+
+            g.DataSource = new BindingList<LineVM>(seq.ToList());
+            foreach (DataGridViewColumn c in g.Columns) c.HeaderCell.SortGlyphDirection = SortOrder.None;
+            col.HeaderCell.SortGlyphDirection = asc ? SortOrder.Ascending : SortOrder.Descending;
+        }
+
+        private static object GetPropValue(object obj, string prop)
+        {
+            var p = obj.GetType().GetProperty(prop, BindingFlags.Public | BindingFlags.Instance);
+            return p != null ? (p.GetValue(obj) ?? 0) : 0;
+        }
 
         private void RecalcTotalsAndText(Header head)
         {
-            double inQty = _inputs.Sum(x => x.Qty);
             double inSum = _inputs.Sum(x => x.Sum);
-            lblInputsTotal.Text = $"ИТОГО входы: кол-во/цикл = {inQty:N0} • сумма = {inSum:N0}";
-
-            double outQty = _outputs.Sum(x => x.Qty);
             double outSum = _outputs.Sum(x => x.Sum);
-            lblOutputsTotal.Text = $"ИТОГО выходы: кол-во/цикл = {outQty:N0} • сумма = {outSum:N0}";
 
-            // левое текстовое — базовые входы "Name<TAB>QtyInt"
-            txtLeft.Clear();
-            foreach (var i in _inputs)
-                txtLeft.AppendText($"{i.Name}\t{Math.Round(i.Qty):N0}{Environment.NewLine}");
+            lblInputsTotal.Text = "ИТОГО входы: " + inSum.ToString("N0", CultureInfo.InvariantCulture);
+            lblOutputsTotal.Text = "ИТОГО выходы: " + outSum.ToString("N0", CultureInfo.InvariantCulture);
 
-            // правое — выходы (по умолчанию их обычно один), но выводим все на всякий случай
-            txtRight.Clear();
-            foreach (var o in _outputs)
-                txtRight.AppendText($"{o.Name}\t{Math.Round(o.Qty):N0}{Environment.NewLine}");
+            // текстовые панели – без грубого округления, формат N3
+            var left = new System.Text.StringBuilder();
+            foreach (var i in _inputs.OrderBy(x => x.Name))
+                left.AppendLine(i.Name + "\t" + i.Qty.ToString("N3", CultureInfo.InvariantCulture));
+            txtLeft.Text = left.ToString();
+
+            var right = new System.Text.StringBuilder();
+            foreach (var o in _outputs.OrderBy(x => x.Name))
+                right.AppendLine(o.Name + "\t" + o.Qty.ToString("N3", CultureInfo.InvariantCulture));
+            txtRight.Text = right.ToString();
+        }
+
+        // ===== распаковка payload (анонимный объект из MoonIndustryForm) =====
+
+        private static Header ExtractHeader(object payload)
+        {
+            return new Header
+            {
+                ProductTypeID = (int)ToInt(GetProp(payload, "ProductTypeID")),
+                Name = Convert.ToString(GetProp(payload, "Name")) ?? "",
+                UnitsPerCycle = ToDouble(GetProp(payload, "UnitsPerCycle")),
+                CycleSeconds = ToDouble(GetProp(payload, "CycleSecondsEff"))
+            };
+        }
+
+        private static IEnumerable<LineVM> ExtractLines(object rawList)
+        {
+            var list = new List<LineVM>();
+            if (rawList == null) return list;
+
+            // поддерживаем: IEnumerable анонимных объектов с полями TypeID/Name/Quantity/UnitPrice/Sum
+            var en = rawList as System.Collections.IEnumerable;
+            if (en == null) return list;
+
+            foreach (var it in en)
+            {
+                list.Add(new LineVM
+                {
+                    TypeID = (int)ToInt(GetProp(it, "TypeID")),
+                    Name = Convert.ToString(GetProp(it, "Name")) ?? "",
+                    Qty = ToDouble(GetProp(it, "Quantity")),
+                    UnitPrice = ToDouble(GetProp(it, "UnitPrice"))
+                });
+            }
+            return list;
+        }
+
+        private static object GetProp(object obj, string name)
+        {
+            if (obj == null) return null;
+            var p = obj.GetType().GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+            return p != null ? p.GetValue(obj) : null;
+        }
+
+        private static double ToDouble(object v)
+        {
+            if (v == null) return 0;
+            if (v is double d) return d;
+            if (v is float f) return f;
+            if (v is decimal m) return (double)m;
+            if (v is int i) return i;
+            if (v is long l) return l;
+            double res;
+            if (double.TryParse(Convert.ToString(v, CultureInfo.InvariantCulture), NumberStyles.Any, CultureInfo.InvariantCulture, out res))
+                return res;
+            return 0;
+        }
+
+        private static long ToInt(object v)
+        {
+            if (v == null) return 0;
+            if (v is int i) return i;
+            if (v is long l) return l;
+            long res;
+            if (long.TryParse(Convert.ToString(v, CultureInfo.InvariantCulture), NumberStyles.Any, CultureInfo.InvariantCulture, out res))
+                return res;
+            return 0;
         }
     }
 }
-
-
 
 
 namespace TestForm
 {
     partial class MoonItemDetailsForm
     {
-        private System.ComponentModel.IContainer components = null;
+        private IContainer components = null;
+
+        private Label lblHeader;
+
+        private SplitContainer mainSplit;   // горизонтальный: сверху таблицы, снизу текст
+        private SplitContainer splitTop;    // вертикальный: gridIn | gridOut
+        private SplitContainer splitBottom; // вертикальный: левый текст | правый текст
 
         private DataGridView gridIn;
         private DataGridView gridOut;
-        private Label lblHeader;
+
         private Label lblInputsTotal;
-        private Label lblOutputsTotal;
-        private SplitContainer splitBottom;
         private TextBox txtLeft;
+
+        private Label lblOutputsTotal;
         private TextBox txtRight;
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
+            if (disposing && components != null)
                 components.Dispose();
             base.Dispose(disposing);
         }
 
         private void InitializeComponent()
         {
-            components = new System.ComponentModel.Container();
+            components = new Container();
 
+            // ---- controls ----
             lblHeader = new Label();
-            gridIn = new DataGridView();
-            lblInputsTotal = new Label();
-            gridOut = new DataGridView();
-            lblOutputsTotal = new Label();
+
+            mainSplit = new SplitContainer();
+            splitTop = new SplitContainer();
             splitBottom = new SplitContainer();
+
+            gridIn = new DataGridView();
+            gridOut = new DataGridView();
+
+            lblInputsTotal = new Label();
             txtLeft = new TextBox();
+
+            lblOutputsTotal = new Label();
             txtRight = new TextBox();
 
-            // ---- Form ----
-            this.SuspendLayout();
-            this.AutoScaleMode = AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1000, 720);
-            this.MinimumSize = new System.Drawing.Size(900, 600);
+            // ---- form ----
+            SuspendLayout();
+            this.Text = "Moon Item Details";
+            this.ClientSize = new Size(1100, 720);
             this.StartPosition = FormStartPosition.CenterParent;
-            this.Text = "Детали — лунные/реакции";
+            this.MinimumSize = new Size(900, 600);
 
-            // ---- lblHeader ----
+            // ---- lblHeader (top caption) ----
             lblHeader.Dock = DockStyle.Top;
-            lblHeader.AutoSize = false;
             lblHeader.Height = 26;
-            lblHeader.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
-            lblHeader.Padding = new Padding(8, 0, 0, 0);
-            lblHeader.Text = "шт/цикл: — • сек/цикл: —";
+            lblHeader.TextAlign = ContentAlignment.MiddleLeft;
+            lblHeader.Padding = new Padding(8, 0, 8, 0);
+            lblHeader.Text = "детали";
+
+            // ---- mainSplit (H) ----
+            mainSplit.Dock = DockStyle.Fill;
+            mainSplit.Orientation = Orientation.Horizontal;
+            mainSplit.SplitterWidth = 5;
+            mainSplit.Panel1MinSize = 200;
+            mainSplit.Panel2MinSize = 200;
+            mainSplit.SplitterDistance = 360;
+
+            // ---- splitTop (V) : grids ----
+            splitTop.Dock = DockStyle.Fill;
+            splitTop.Orientation = Orientation.Vertical;
+            splitTop.SplitterWidth = 5;
+            splitTop.Panel1MinSize = 220;
+            splitTop.Panel2MinSize = 220;
+            splitTop.SplitterDistance = this.ClientSize.Width / 2;
 
             // ---- gridIn ----
-            gridIn.Dock = DockStyle.Top;
-            gridIn.Height = 210;
+            gridIn.Dock = DockStyle.Fill;
+            gridIn.ReadOnly = true;
             gridIn.AllowUserToAddRows = false;
             gridIn.AllowUserToDeleteRows = false;
             gridIn.AllowUserToResizeRows = false;
@@ -343,19 +388,10 @@ namespace TestForm
             gridIn.MultiSelect = false;
             gridIn.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             gridIn.AutoGenerateColumns = false;
-            gridIn.ReadOnly = true;
-
-            // ---- lblInputsTotal ----
-            lblInputsTotal.Dock = DockStyle.Top;
-            lblInputsTotal.AutoSize = false;
-            lblInputsTotal.Height = 22;
-            lblInputsTotal.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
-            lblInputsTotal.Padding = new Padding(8, 0, 0, 0);
-            lblInputsTotal.Text = "ИТОГО входы: —";
 
             // ---- gridOut ----
-            gridOut.Dock = DockStyle.Top;
-            gridOut.Height = 210;
+            gridOut.Dock = DockStyle.Fill;
+            gridOut.ReadOnly = true;
             gridOut.AllowUserToAddRows = false;
             gridOut.AllowUserToDeleteRows = false;
             gridOut.AllowUserToResizeRows = false;
@@ -363,51 +399,63 @@ namespace TestForm
             gridOut.MultiSelect = false;
             gridOut.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             gridOut.AutoGenerateColumns = false;
-            gridOut.ReadOnly = true;
 
-            // ---- lblOutputsTotal ----
-            lblOutputsTotal.Dock = DockStyle.Top;
-            lblOutputsTotal.AutoSize = false;
-            lblOutputsTotal.Height = 22;
-            lblOutputsTotal.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
-            lblOutputsTotal.Padding = new Padding(8, 0, 0, 0);
-            lblOutputsTotal.Text = "ИТОГО выходы: —";
+            splitTop.Panel1.Controls.Add(gridIn);
+            splitTop.Panel2.Controls.Add(gridOut);
 
-            // ---- splitBottom ----
+            // ---- splitBottom (V) : text summaries ----
             splitBottom.Dock = DockStyle.Fill;
             splitBottom.Orientation = Orientation.Vertical;
-            splitBottom.SplitterWidth = 6;
-            splitBottom.FixedPanel = FixedPanel.None;
-            splitBottom.Panel1MinSize = 120;
-            splitBottom.Panel2MinSize = 120;
+            splitBottom.SplitterWidth = 5;
+            splitBottom.Panel1MinSize = 200;
+            splitBottom.Panel2MinSize = 200;
+            splitBottom.SplitterDistance = this.ClientSize.Width / 2;
 
-            // ---- txtLeft ----
+            // ---- Left panel: inputs total + text ----
+            var panelLeft = new Panel { Dock = DockStyle.Fill };
+            lblInputsTotal.Dock = DockStyle.Top;
+            lblInputsTotal.Height = 22;
+            lblInputsTotal.TextAlign = ContentAlignment.MiddleLeft;
+            lblInputsTotal.Padding = new Padding(6, 0, 6, 0);
+            lblInputsTotal.Text = "ИТОГО входы: 0";
+
             txtLeft.Dock = DockStyle.Fill;
             txtLeft.Multiline = true;
-            txtLeft.ScrollBars = ScrollBars.Both;
-            txtLeft.AcceptsTab = true;
-            txtLeft.WordWrap = false;
+            txtLeft.ReadOnly = true;
+            txtLeft.ScrollBars = ScrollBars.Vertical;
+            txtLeft.BorderStyle = BorderStyle.FixedSingle;
 
-            // ---- txtRight ----
+            panelLeft.Controls.Add(txtLeft);
+            panelLeft.Controls.Add(lblInputsTotal);
+
+            // ---- Right panel: outputs total + text ----
+            var panelRight = new Panel { Dock = DockStyle.Fill };
+            lblOutputsTotal.Dock = DockStyle.Top;
+            lblOutputsTotal.Height = 22;
+            lblOutputsTotal.TextAlign = ContentAlignment.MiddleLeft;
+            lblOutputsTotal.Padding = new Padding(6, 0, 6, 0);
+            lblOutputsTotal.Text = "ИТОГО выходы: 0";
+
             txtRight.Dock = DockStyle.Fill;
             txtRight.Multiline = true;
-            txtRight.ScrollBars = ScrollBars.Both;
-            txtRight.AcceptsTab = true;
-            txtRight.WordWrap = false;
+            txtRight.ReadOnly = true;
+            txtRight.ScrollBars = ScrollBars.Vertical;
+            txtRight.BorderStyle = BorderStyle.FixedSingle;
 
-            // add textboxes to split panels
-            splitBottom.Panel1.Controls.Add(txtLeft);
-            splitBottom.Panel2.Controls.Add(txtRight);
+            panelRight.Controls.Add(txtRight);
+            panelRight.Controls.Add(lblOutputsTotal);
 
-            // order of adding matters (top-docked blocks first)
-            this.Controls.Add(splitBottom);
-            this.Controls.Add(lblOutputsTotal);
-            this.Controls.Add(gridOut);
-            this.Controls.Add(lblInputsTotal);
-            this.Controls.Add(gridIn);
+            splitBottom.Panel1.Controls.Add(panelLeft);
+            splitBottom.Panel2.Controls.Add(panelRight);
+
+            // ---- assemble ----
+            mainSplit.Panel1.Controls.Add(splitTop);
+            mainSplit.Panel2.Controls.Add(splitBottom);
+
+            this.Controls.Add(mainSplit);
             this.Controls.Add(lblHeader);
 
-            this.ResumeLayout(false);
+            ResumeLayout(false);
         }
     }
 }
