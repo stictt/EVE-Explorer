@@ -15,6 +15,8 @@
         public static string DataStaStationsPath => Path.Combine(DataResourcePath, "staStations.csv");
         public static string DataSettingPath => Path.Combine(CurrentDirectory, "Settings");
         public static string OrderHistoryMonthPath => Path.Combine(DataResourcePath, "OrderHistoryMonth.ch");
+        public static string _settingsPath =
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MoonIndustryForm.settings.bin");
         public static string ApiSettingsPath => Path.Combine(DataSettingPath, "ApiSettings.json");
 
         // Новые стандартные пути под SDE CSV

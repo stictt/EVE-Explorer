@@ -1,19 +1,19 @@
-﻿using System;
-using System.ComponentModel;
-using System.Globalization;
-using System.Linq;
-using System.Windows.Forms;
-using System.Collections;
-
+﻿using ANALYTICS;
+using Domain.Infrastructure;       // IPriceProvider
+using Domain.Models;               // OrderHistoryMonthList
+using Loader.Infrastructure;        // BinaryCachingService, Paths
+using OreTools;                    // MarketOrdersForm
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+
 namespace TestForm
 {
     public partial class MoonItemDetailsForm : Form
@@ -24,8 +24,15 @@ namespace TestForm
             public int TypeID { get; set; }
             public string Name { get; set; } = "";
             public double Qty { get; set; }
-            public double UnitPrice { get; set; }
-            public double Sum { get { return Qty * UnitPrice; } }
+
+            public double Rating { get; set; }   // из OrderHistoryMonthList
+            public double AvgVol { get; set; }   // из OrderHistoryMonthList
+
+            public double Buy { get; set; }      // цена покупки (BUY)
+            public double Sell { get; set; }     // цена продажи (SELL)
+
+            public double SumBuy => Qty * Buy;
+            public double SumSell => Qty * Sell;
         }
 
         private sealed class Header
@@ -39,88 +46,175 @@ namespace TestForm
         private readonly BindingList<LineVM> _inputs = new BindingList<LineVM>();
         private readonly BindingList<LineVM> _outputs = new BindingList<LineVM>();
 
-        public MoonItemDetailsForm(object payload)
+        // ценовой провайдер и регион — форма сама тянет цены
+        private readonly IPriceProvider _priceProvider;
+        private readonly int _regionId;
+
+        // история (рейтинг/средний объём)
+        private readonly Dictionary<int, (double rating, double avgVol)> _histByType;
+
+        public MoonItemDetailsForm(object payload, IPriceProvider priceProvider, int regionId)
         {
+            _priceProvider = priceProvider;
+            _regionId = regionId;
+
+            _histByType = LoadHistory();
+
             InitializeComponent();
             TryApplyDark();
 
-            // безопасно распакуем анонимный payload через рефлексию
+            // распакуем payload (чистый BOM/Outputs из MoonIndustryForm)
             var head = ExtractHeader(payload);
             var ins = ExtractLines(GetProp(payload, "Inputs"));
             var outs = ExtractLines(GetProp(payload, "Outputs"));
 
-            foreach (var i in ins) _inputs.Add(i);
-            foreach (var o in outs) _outputs.Add(o);
+            foreach (var i in ins) _inputs.Add(Enrich(i));
+            foreach (var o in outs) _outputs.Add(Enrich(o));
 
-            // шапка/итоги/биндинги
+            // шапка/биндинги/события
             Text = head.Name + " [" + head.ProductTypeID + "] — детали";
-            lblHeader.Text = "шт/цикл: " + head.UnitsPerCycle.ToString("N0") + " • сек/цикл: " + head.CycleSeconds.ToString("N0");
+            lblHeader.Text = $"шт/цикл: {head.UnitsPerCycle:N0} • сек/цикл: {head.CycleSeconds:N0}";
 
             gridIn.DataSource = _inputs;
             gridOut.DataSource = _outputs;
             BuildColumns(gridIn);
             BuildColumns(gridOut);
 
-            RecalcTotalsAndText(head);
+            // двойной клик -> MarketOrdersForm
+            gridIn.CellDoubleClick += (_, e) => OpenOrders(gridIn, e.RowIndex);
+            gridOut.CellDoubleClick += (_, e) => OpenOrders(gridOut, e.RowIndex);
 
-            // адекватная ширина панелей снизу
-            this.Shown += (_, __) => SafeSetSplitterDistance();
-            splitBottom.SizeChanged += (_, __) => SafeSetSplitterDistance();
+            // безопасная инициализация сплиттеров
+            this.Shown += async (_, __) =>
+            {
+                BeginInvoke(new Action(SafeInitSplitters));
+                await LoadPricesAsync(); // подтянем BUY/SELL асинхронно
+            };
+            mainSplit.SizeChanged += (_, __) => SafeSetSplitterDistance(mainSplit);
+            splitTop.SizeChanged += (_, __) => SafeSetSplitterDistance(splitTop);
+            splitBottom.SizeChanged += (_, __) => SafeSetSplitterDistance(splitBottom);
+
+            // первичные футеры/тексты
+            UpdateFooters();
+            RebuildTextAreas();
         }
 
-        // аккуратно делим нижнюю область 50/50, соблюдая минимумы
-        private void SafeSetSplitterDistance()
+        private LineVM Enrich(LineVM x)
         {
-            if (!splitBottom.IsHandleCreated) return;
+            if (_histByType.TryGetValue(x.TypeID, out var h))
+            {
+                x.Rating = h.rating;
+                x.AvgVol = h.avgVol;
+            }
+            return x;
+        }
 
-            int w = splitBottom.ClientSize.Width;
-            if (w <= 0) return;
-
-            int p1 = Math.Max(120, splitBottom.Panel1MinSize);
-            int p2 = Math.Max(120, splitBottom.Panel2MinSize);
-
-            int min = p1;
-            int max = Math.Max(p1, w - p2);
-
-            int target = w / 2;
-            if (target < min) target = min;
-            if (target > max) target = max;
-
+        private Dictionary<int, (double rating, double avgVol)> LoadHistory()
+        {
+            var map = new Dictionary<int, (double, double)>();
             try
             {
-                splitBottom.SplitterDistance = target;
+                var cache = new BinaryCachingService();
+                if (cache.TryLoad<OrderHistoryMonthList>(Paths.OrderHistoryMonthPath, out var data, out var _) && data != null)
+                {
+                    foreach (var i in data.List)
+                        map[i.TypeId] = (i.Rating, i.AverageVolume);
+                }
             }
-            catch
+            catch { /* без истории ок */ }
+            return map;
+        }
+
+        private async Task LoadPricesAsync()
+        {
+            try
             {
-                splitBottom.Panel1MinSize = 0;
-                splitBottom.Panel2MinSize = 0;
-                splitBottom.SplitterDistance = w / 2;
+                // собрать уникальные typeId
+                var ids = new HashSet<int>();
+                foreach (var i in _inputs) ids.Add(i.TypeID);
+                foreach (var o in _outputs) ids.Add(o.TypeID);
+
+                var prices = await _priceProvider.GetBestPricesAsync(ids, _regionId, CancellationToken.None);
+
+                // проставим цены
+                void apply(BindingList<LineVM> list)
+                {
+                    foreach (var it in list)
+                    {
+                        if (prices.TryGetValue(it.TypeID, out var p))
+                        {
+                            it.Buy = p.bestBuy;
+                            it.Sell = p.bestSell;
+                        }
+                    }
+                }
+
+                apply(_inputs);
+                apply(_outputs);
+
+                gridIn.Refresh();
+                gridOut.Refresh();
+                UpdateFooters();
+                RebuildTextAreas();
+            }
+            catch (Exception ex)
+            {
+                // в крайнем случае просто оставим 0, чтобы не падать
+                Console.WriteLine(ex);
             }
         }
+
+        private void OpenOrders(DataGridView g, int rowIndex)
+        {
+            if (rowIndex < 0 || rowIndex >= g.Rows.Count) return;
+
+            if (g.Rows[rowIndex].DataBoundItem is not LineVM vm) return;
+
+            using var dlg = new MarketOrdersForm(vm.TypeID, vm.Name, _regionId);
+            dlg.StartPosition = FormStartPosition.CenterParent;
+            dlg.ShowDialog(this);
+        }
+
+        // ===== оформление =====
 
         private void TryApplyDark()
         {
             try
             {
-                // твой хелпер, если есть в проекте
                 var t = Type.GetType("UiStyle");
                 var m = t?.GetMethod("ApplyDark", BindingFlags.Public | BindingFlags.Static);
                 if (m != null) m.Invoke(null, new object[] { this });
             }
             catch { /* необязательно */ }
 
-            // подстройка цветов
             Color caption = Color.Gainsboro;
             lblHeader.ForeColor = caption;
             lblInputsTotal.ForeColor = caption;
             lblOutputsTotal.ForeColor = caption;
+            lblInFooter.ForeColor = Color.Gold;
+            lblOutFooter.ForeColor = Color.Gold;
 
-            gridIn.EnableHeadersVisualStyles = false;
-            gridOut.EnableHeadersVisualStyles = false;
-            gridIn.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(45, 45, 48);
-            gridOut.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(45, 45, 48);
-            gridIn.ColumnHeadersDefaultCellStyle.ForeColor = caption;
-            gridOut.ColumnHeadersDefaultCellStyle.ForeColor = caption;
+            void StyleGrid(DataGridView g)
+            {
+                g.EnableHeadersVisualStyles = false;
+                g.BackgroundColor = Color.FromArgb(37, 37, 38);
+                g.GridColor = Color.FromArgb(62, 62, 64);
+                g.DefaultCellStyle.BackColor = Color.FromArgb(30, 30, 30);
+                g.DefaultCellStyle.ForeColor = Color.Gainsboro;
+                g.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(26, 26, 28);
+                g.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(45, 45, 48);
+                g.ColumnHeadersDefaultCellStyle.ForeColor = Color.Gainsboro;
+                g.ColumnHeadersDefaultCellStyle.Font = new Font(g.Font, FontStyle.Bold);
+                g.RowHeadersVisible = false;
+            }
+
+            StyleGrid(gridIn);
+            StyleGrid(gridOut);
+
+            txtLeft.BackColor = Color.FromArgb(30, 30, 30);
+            txtRight.BackColor = Color.FromArgb(30, 30, 30);
+            txtLeft.ForeColor = Color.Gainsboro;
+            txtRight.ForeColor = Color.Gainsboro;
         }
 
         private void BuildColumns(DataGridView g)
@@ -130,53 +224,60 @@ namespace TestForm
 
             g.Columns.Add(new DataGridViewTextBoxColumn
             {
-                DataPropertyName = "TypeID",
+                DataPropertyName = nameof(LineVM.TypeID),
                 HeaderText = "TypeID",
                 Width = 80,
                 SortMode = DataGridViewColumnSortMode.Programmatic
             });
             g.Columns.Add(new DataGridViewTextBoxColumn
             {
-                DataPropertyName = "Name",
+                DataPropertyName = nameof(LineVM.Name),
                 HeaderText = "Название",
                 AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
                 SortMode = DataGridViewColumnSortMode.Programmatic
             });
+
             g.Columns.Add(new DataGridViewTextBoxColumn
             {
-                DataPropertyName = "Qty",
+                DataPropertyName = nameof(LineVM.Qty),
                 HeaderText = "Кол-во",
                 Width = 110,
                 SortMode = DataGridViewColumnSortMode.Programmatic,
-                DefaultCellStyle = new DataGridViewCellStyle
-                {
-                    Alignment = DataGridViewContentAlignment.MiddleRight,
-                    Format = "N3"
-                }
+                DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "N3" }
             });
+
             g.Columns.Add(new DataGridViewTextBoxColumn
             {
-                DataPropertyName = "UnitPrice",
-                HeaderText = "Цена/шт",
+                DataPropertyName = nameof(LineVM.Rating),
+                HeaderText = "Rating",
                 Width = 110,
                 SortMode = DataGridViewColumnSortMode.Programmatic,
-                DefaultCellStyle = new DataGridViewCellStyle
-                {
-                    Alignment = DataGridViewContentAlignment.MiddleRight,
-                    Format = "N0"
-                }
+                DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "N0" }
             });
             g.Columns.Add(new DataGridViewTextBoxColumn
             {
-                DataPropertyName = "Sum",
-                HeaderText = "Сумма",
-                Width = 120,
+                DataPropertyName = nameof(LineVM.AvgVol),
+                HeaderText = "AvgVol",
+                Width = 110,
                 SortMode = DataGridViewColumnSortMode.Programmatic,
-                DefaultCellStyle = new DataGridViewCellStyle
-                {
-                    Alignment = DataGridViewContentAlignment.MiddleRight,
-                    Format = "N0"
-                }
+                DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "N0" }
+            });
+
+            g.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = nameof(LineVM.Buy),
+                HeaderText = "BUY",
+                Width = 110,
+                SortMode = DataGridViewColumnSortMode.Programmatic,
+                DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "N0" }
+            });
+            g.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                DataPropertyName = nameof(LineVM.Sell),
+                HeaderText = "SELL",
+                Width = 110,
+                SortMode = DataGridViewColumnSortMode.Programmatic,
+                DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight, Format = "N0" }
             });
 
             g.ColumnHeaderMouseClick -= Grid_ColumnHeaderMouseClick;
@@ -193,13 +294,12 @@ namespace TestForm
             if (string.IsNullOrEmpty(prop)) return;
 
             var list = (BindingList<LineVM>)g.DataSource;
-            IEnumerable<LineVM> seq = list;
-
             bool asc = col.HeaderCell.SortGlyphDirection != SortOrder.Ascending;
-            seq = asc ? list.OrderBy(x => GetPropValue(x, prop))
-                      : list.OrderByDescending(x => GetPropValue(x, prop));
+            var sorted = asc
+                ? list.OrderBy(x => GetPropValue(x, prop))
+                : list.OrderByDescending(x => GetPropValue(x, prop));
 
-            g.DataSource = new BindingList<LineVM>(seq.ToList());
+            g.DataSource = new BindingList<LineVM>(sorted.ToList());
             foreach (DataGridViewColumn c in g.Columns) c.HeaderCell.SortGlyphDirection = SortOrder.None;
             col.HeaderCell.SortGlyphDirection = asc ? SortOrder.Ascending : SortOrder.Descending;
         }
@@ -210,27 +310,78 @@ namespace TestForm
             return p != null ? (p.GetValue(obj) ?? 0) : 0;
         }
 
-        private void RecalcTotalsAndText(Header head)
+        // ===== футеры и текстовые зоны =====
+
+        private void UpdateFooters()
         {
-            double inSum = _inputs.Sum(x => x.Sum);
-            double outSum = _outputs.Sum(x => x.Sum);
+            double inBuy = _inputs.Sum(x => x.SumBuy);
+            double inSell = _inputs.Sum(x => x.SumSell);
+            double outBuy = _outputs.Sum(x => x.SumBuy);
+            double outSell = _outputs.Sum(x => x.SumSell);
 
-            lblInputsTotal.Text = "ИТОГО входы: " + inSum.ToString("N0", CultureInfo.InvariantCulture);
-            lblOutputsTotal.Text = "ИТОГО выходы: " + outSum.ToString("N0", CultureInfo.InvariantCulture);
+            lblInFooter.Text = $"Σ BUY {inBuy:N0} | Σ SELL {inSell:N0}";
+            lblOutFooter.Text = $"Σ BUY {outBuy:N0} | Σ SELL {outSell:N0}";
 
-            // текстовые панели – без грубого округления, формат N3
+            // дубль в нижних панелях (если полезно)
+            lblInputsTotal.Text = lblInFooter.Text.Replace("Σ ", "");
+            lblOutputsTotal.Text = lblOutFooter.Text.Replace("Σ ", ""); // без «Σ» в нижних
+        }
+
+        private void RebuildTextAreas()
+        {
             var left = new System.Text.StringBuilder();
             foreach (var i in _inputs.OrderBy(x => x.Name))
-                left.AppendLine(i.Name + "\t" + i.Qty.ToString("N3", CultureInfo.InvariantCulture));
+                left.AppendLine($"{i.Name}\t{FmtQty(i.Qty)}");
             txtLeft.Text = left.ToString();
 
             var right = new System.Text.StringBuilder();
             foreach (var o in _outputs.OrderBy(x => x.Name))
-                right.AppendLine(o.Name + "\t" + o.Qty.ToString("N3", CultureInfo.InvariantCulture));
+                right.AppendLine($"{o.Name}\t{FmtQty(o.Qty)}");
             txtRight.Text = right.ToString();
         }
 
-        // ===== распаковка payload (анонимный объект из MoonIndustryForm) =====
+        private static string FmtQty(double v)
+        {
+            // компактно: без разделителей тысяч, до 3 знаков после запятой, без лишних нулей
+            return v.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        // ----- безопасная установка SplitterDistance -----
+        private void SafeInitSplitters()
+        {
+            SafeSetSplitterDistance(mainSplit);
+            SafeSetSplitterDistance(splitTop);
+            SafeSetSplitterDistance(splitBottom);
+        }
+
+        private void SafeSetSplitterDistance(SplitContainer s)
+        {
+            if (s == null || !s.IsHandleCreated) return;
+
+            int extent = (s.Orientation == Orientation.Vertical) ? s.ClientSize.Width : s.ClientSize.Height;
+            if (extent <= 0) return;
+
+            int min1 = Math.Max(0, s.Panel1MinSize);
+            int min2 = Math.Max(0, s.Panel2MinSize);
+
+            int target = extent / 2;
+            int minAllowed = Math.Min(extent, min1);
+            int maxAllowed = Math.Max(0, extent - min2);
+
+            if (target < minAllowed) target = minAllowed;
+            if (target > maxAllowed) target = maxAllowed;
+
+            try { s.SplitterDistance = target; }
+            catch
+            {
+                s.Panel1MinSize = 0;
+                s.Panel2MinSize = 0;
+                int safe = Math.Max(0, extent / 2);
+                try { s.SplitterDistance = safe; } catch { /* ignore */ }
+            }
+        }
+
+        // ===== распаковка payload =====
 
         private static Header ExtractHeader(object payload)
         {
@@ -248,7 +399,6 @@ namespace TestForm
             var list = new List<LineVM>();
             if (rawList == null) return list;
 
-            // поддерживаем: IEnumerable анонимных объектов с полями TypeID/Name/Quantity/UnitPrice/Sum
             var en = rawList as System.Collections.IEnumerable;
             if (en == null) return list;
 
@@ -258,8 +408,7 @@ namespace TestForm
                 {
                     TypeID = (int)ToInt(GetProp(it, "TypeID")),
                     Name = Convert.ToString(GetProp(it, "Name")) ?? "",
-                    Qty = ToDouble(GetProp(it, "Quantity")),
-                    UnitPrice = ToDouble(GetProp(it, "UnitPrice"))
+                    Qty = ToDouble(GetProp(it, "Quantity"))
                 });
             }
             return list;
@@ -312,8 +461,15 @@ namespace TestForm
         private SplitContainer splitTop;    // вертикальный: gridIn | gridOut
         private SplitContainer splitBottom; // вертикальный: левый текст | правый текст
 
+        private Panel panelInTop;
         private DataGridView gridIn;
+        private Panel panelInFooter;
+        private Label lblInFooter;
+
+        private Panel panelOutTop;
         private DataGridView gridOut;
+        private Panel panelOutFooter;
+        private Label lblOutFooter;
 
         private Label lblInputsTotal;
         private TextBox txtLeft;
@@ -339,8 +495,15 @@ namespace TestForm
             splitTop = new SplitContainer();
             splitBottom = new SplitContainer();
 
+            panelInTop = new Panel();
             gridIn = new DataGridView();
+            panelInFooter = new Panel();
+            lblInFooter = new Label();
+
+            panelOutTop = new Panel();
             gridOut = new DataGridView();
+            panelOutFooter = new Panel();
+            lblOutFooter = new Label();
 
             lblInputsTotal = new Label();
             txtLeft = new TextBox();
@@ -361,24 +524,28 @@ namespace TestForm
             lblHeader.TextAlign = ContentAlignment.MiddleLeft;
             lblHeader.Padding = new Padding(8, 0, 8, 0);
             lblHeader.Text = "детали";
+            lblHeader.ForeColor = Color.Gainsboro;
+            lblHeader.BackColor = Color.FromArgb(32, 32, 34);
 
             // ---- mainSplit (H) ----
             mainSplit.Dock = DockStyle.Fill;
             mainSplit.Orientation = Orientation.Horizontal;
             mainSplit.SplitterWidth = 5;
-            mainSplit.Panel1MinSize = 200;
-            mainSplit.Panel2MinSize = 200;
-            mainSplit.SplitterDistance = 360;
+            mainSplit.Panel1MinSize = 0;
+            mainSplit.Panel2MinSize = 0;
 
             // ---- splitTop (V) : grids ----
             splitTop.Dock = DockStyle.Fill;
             splitTop.Orientation = Orientation.Vertical;
             splitTop.SplitterWidth = 5;
-            splitTop.Panel1MinSize = 220;
-            splitTop.Panel2MinSize = 220;
-            splitTop.SplitterDistance = this.ClientSize.Width / 2;
+            splitTop.Panel1MinSize = 0;
+            splitTop.Panel2MinSize = 0;
 
-            // ---- gridIn ----
+            // ---- left (inputs) panel with footer ----
+            panelInTop.Dock = DockStyle.Fill;
+            panelInTop.Padding = new Padding(0);
+            panelInTop.BackColor = Color.FromArgb(32, 32, 34);
+
             gridIn.Dock = DockStyle.Fill;
             gridIn.ReadOnly = true;
             gridIn.AllowUserToAddRows = false;
@@ -389,7 +556,24 @@ namespace TestForm
             gridIn.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             gridIn.AutoGenerateColumns = false;
 
-            // ---- gridOut ----
+            panelInFooter.Dock = DockStyle.Bottom;
+            panelInFooter.Height = 22;
+            panelInFooter.BackColor = Color.FromArgb(28, 28, 30);
+            lblInFooter.Dock = DockStyle.Fill;
+            lblInFooter.TextAlign = ContentAlignment.MiddleLeft;
+            lblInFooter.Padding = new Padding(6, 0, 6, 0);
+            lblInFooter.Text = "Σ BUY 0 | Σ SELL 0";
+            lblInFooter.ForeColor = Color.Gold;
+
+            panelInFooter.Controls.Add(lblInFooter);
+            panelInTop.Controls.Add(gridIn);
+            panelInTop.Controls.Add(panelInFooter);
+
+            // ---- right (outputs) panel with footer ----
+            panelOutTop.Dock = DockStyle.Fill;
+            panelOutTop.Padding = new Padding(0);
+            panelOutTop.BackColor = Color.FromArgb(32, 32, 34);
+
             gridOut.Dock = DockStyle.Fill;
             gridOut.ReadOnly = true;
             gridOut.AllowUserToAddRows = false;
@@ -400,47 +584,65 @@ namespace TestForm
             gridOut.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             gridOut.AutoGenerateColumns = false;
 
-            splitTop.Panel1.Controls.Add(gridIn);
-            splitTop.Panel2.Controls.Add(gridOut);
+            panelOutFooter.Dock = DockStyle.Bottom;
+            panelOutFooter.Height = 22;
+            panelOutFooter.BackColor = Color.FromArgb(28, 28, 30);
+            lblOutFooter.Dock = DockStyle.Fill;
+            lblOutFooter.TextAlign = ContentAlignment.MiddleLeft;
+            lblOutFooter.Padding = new Padding(6, 0, 6, 0);
+            lblOutFooter.Text = "Σ BUY 0 | Σ SELL 0";
+            lblOutFooter.ForeColor = Color.Gold;
+
+            panelOutFooter.Controls.Add(lblOutFooter);
+            panelOutTop.Controls.Add(gridOut);
+            panelOutTop.Controls.Add(panelOutFooter);
+
+            splitTop.Panel1.Controls.Add(panelInTop);
+            splitTop.Panel2.Controls.Add(panelOutTop);
 
             // ---- splitBottom (V) : text summaries ----
             splitBottom.Dock = DockStyle.Fill;
             splitBottom.Orientation = Orientation.Vertical;
             splitBottom.SplitterWidth = 5;
-            splitBottom.Panel1MinSize = 200;
-            splitBottom.Panel2MinSize = 200;
-            splitBottom.SplitterDistance = this.ClientSize.Width / 2;
+            splitBottom.Panel1MinSize = 0;
+            splitBottom.Panel2MinSize = 0;
 
             // ---- Left panel: inputs total + text ----
-            var panelLeft = new Panel { Dock = DockStyle.Fill };
+            var panelLeft = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(32, 32, 34) };
             lblInputsTotal.Dock = DockStyle.Top;
             lblInputsTotal.Height = 22;
             lblInputsTotal.TextAlign = ContentAlignment.MiddleLeft;
             lblInputsTotal.Padding = new Padding(6, 0, 6, 0);
-            lblInputsTotal.Text = "ИТОГО входы: 0";
+            lblInputsTotal.Text = "ИТОГО входы";
+            lblInputsTotal.ForeColor = Color.Gainsboro;
 
             txtLeft.Dock = DockStyle.Fill;
             txtLeft.Multiline = true;
             txtLeft.ReadOnly = true;
             txtLeft.ScrollBars = ScrollBars.Vertical;
             txtLeft.BorderStyle = BorderStyle.FixedSingle;
+            txtLeft.BackColor = Color.FromArgb(30, 30, 30);
+            txtLeft.ForeColor = Color.Gainsboro;
 
             panelLeft.Controls.Add(txtLeft);
             panelLeft.Controls.Add(lblInputsTotal);
 
             // ---- Right panel: outputs total + text ----
-            var panelRight = new Panel { Dock = DockStyle.Fill };
+            var panelRight = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(32, 32, 34) };
             lblOutputsTotal.Dock = DockStyle.Top;
             lblOutputsTotal.Height = 22;
             lblOutputsTotal.TextAlign = ContentAlignment.MiddleLeft;
             lblOutputsTotal.Padding = new Padding(6, 0, 6, 0);
-            lblOutputsTotal.Text = "ИТОГО выходы: 0";
+            lblOutputsTotal.Text = "ИТОГО выходы";
+            lblOutputsTotal.ForeColor = Color.Gainsboro;
 
             txtRight.Dock = DockStyle.Fill;
             txtRight.Multiline = true;
             txtRight.ReadOnly = true;
             txtRight.ScrollBars = ScrollBars.Vertical;
             txtRight.BorderStyle = BorderStyle.FixedSingle;
+            txtRight.BackColor = Color.FromArgb(30, 30, 30);
+            txtRight.ForeColor = Color.Gainsboro;
 
             panelRight.Controls.Add(txtRight);
             panelRight.Controls.Add(lblOutputsTotal);
