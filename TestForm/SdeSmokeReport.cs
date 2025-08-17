@@ -1,4 +1,5 @@
 ﻿using Domain.Models.ResourceDTO;
+using Loader.Infrastructure;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -35,9 +36,9 @@ namespace Domain.Services // подправь под свой namespace
         /// <summary>
         /// Прогоняет полную загрузку SDE и базовые проверки.
         /// </summary>
-        public static SdeSmokeReport Run(CsvService csv, Action<string>? log = null)
+        public static SdeSmokeReport Run(CsvService csv)
         {
-            log ??= Console.WriteLine;
+           
             var sw = Stopwatch.StartNew();
 
             // 1) Сбор агрегата
@@ -100,7 +101,7 @@ namespace Domain.Services // подправь под свой namespace
             rep.Ok = rep.Errors.Count == 0;
 
             // 6) Вывод краткого отчёта
-            Print(rep, log);
+
 
             return rep;
         }

@@ -12,7 +12,7 @@ namespace Domain.Services
     public class CSVMapService
     {
         // -------------------- простое маппирование invTypes -> AvailableGameResourceDTO --------------------
-        public List<AvailableGameResourceDTO> MapingAvailableGameResources(List<BaseInvType> baseInvTypes)
+        public List<AvailableGameResourceDTO> MapingAvailableGameResources(List<InvType> baseInvTypes)
         {
             var result = new List<AvailableGameResourceDTO>(baseInvTypes?.Count ?? 0);
             if (baseInvTypes == null) return result;
@@ -21,7 +21,7 @@ namespace Domain.Services
             return result;
         }
 
-        private AvailableGameResourceDTO ParseBaseInvTypeToAvailableGameResourceDTO(BaseInvType value)
+        private AvailableGameResourceDTO ParseBaseInvTypeToAvailableGameResourceDTO(InvType value)
         {
             if (value == null) return new AvailableGameResourceDTO();
 
@@ -62,7 +62,7 @@ namespace Domain.Services
 
         // -------------------- основной агрегатор SDE --------------------
         public SdeAggregateDTO BuildAggregate(
-            List<BaseInvType> types,
+            List<InvType> types,
             List<InvGroup> groups,
             List<InvCategory> cats,
             List<InvMarketGroup> mgs,
@@ -72,7 +72,7 @@ namespace Domain.Services
             List<IndustryBlueprint> ibl,
             List<InvTypeMaterial> itm)
         {
-            types ??= new List<BaseInvType>();
+            types ??= new List<InvType>();
             groups ??= new List<InvGroup>();
             cats ??= new List<InvCategory>();
             mgs ??= new List<InvMarketGroup>();

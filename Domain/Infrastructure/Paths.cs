@@ -30,5 +30,9 @@
         public static string DataIndustryBlueprintsPath => Path.Combine(DataResourcePath, "industryBlueprints.csv");
 
         public static string DataInvTypeMaterialsPath => Path.Combine(DataResourcePath, "invTypeMaterials.csv");
+
+        public static string PlanetSchematicsPath => Path.Combine(DataResourcePath, "planetSchematics.csv");
+        public static string PlanetSchematicsPinMapPath => Path.Combine(DataResourcePath, "planetSchematicsPinMap.csv");
+        public static string PlanetSchematicsTypeMapPath => Path.Combine(DataResourcePath, "planetSchematicsTypeMap.csv");
     }
 }

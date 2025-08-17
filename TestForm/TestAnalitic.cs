@@ -20,7 +20,7 @@ namespace TestForm
         {
             BinaryCachingService binaryCachingService = new BinaryCachingService();
             binaryCachingService.TryLoad<OrderHistoryMonthList>(Paths.OrderHistoryMonthPath, out var dataLoad, out var re);
-            CsvService csvService = new CsvService(new CSVMapService(), new LoggerFactoryBase().CreateLogger<CsvService>());
+            CsvService csvService = new CsvService(new CSVMapService());
 
             var InvTypes =  csvService.GetBaseInvTypes();
 

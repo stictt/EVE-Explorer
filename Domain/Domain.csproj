@@ -63,6 +63,12 @@
     <None Update="Resource\OrderHistoryMonth.ch">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Resource\planetSchematics.csv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Resource\planetSchematicsPinMap.csv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Resource\planetSchematicsTypeMap.csv">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

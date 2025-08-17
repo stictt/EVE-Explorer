@@ -46,7 +46,7 @@ namespace Domain.Models
         public Activity Activity { get; set; }
     }
 
-    public class Recipe
+    public class RecipeCraft
     {
         public RecipeId Id { get; set; }
         public Product Output { get; set; }                // главный продукт
@@ -73,41 +73,41 @@ namespace Domain.Models
         public CraftParams Reaction { get; set; } = new CraftParams();
     }
 
-    public interface IRecipeCatalog
+    public interface IRecipeCraftCatalog
     {
         // Строго по активности (если знаем какой вид нужен)
-        Recipe ResolveByProductOrNull(int productTypeId, Activity activity);
+        RecipeCraft ResolveByProductOrNull(int productTypeId, Activity activity);
 
         // Mixed: вернуть рецепт любой разрешённой активности по приоритету
-        Recipe ResolveAnyOrNull(int productTypeId, IEnumerable<Activity> allowedOrder);
+        RecipeCraft ResolveAnyOrNull(int productTypeId, IEnumerable<Activity> allowedOrder);
     }
 
-    public class InMemoryRecipeCatalog : IRecipeCatalog
+    public class InMemoryRecipeCatalog : IRecipeCraftCatalog
     {
         // productTypeId -> recipe
-        private readonly Dictionary<int, Recipe> _mfgByProduct = new();
-        private readonly Dictionary<int, Recipe> _rxByProduct = new();
+        private readonly Dictionary<int, RecipeCraft> _mfgByProduct = new();
+        private readonly Dictionary<int, RecipeCraft> _rxByProduct = new();
 
-        public void LoadManufacturing(IEnumerable<Recipe> mfgRecipes)
+        public void LoadManufacturing(IEnumerable<RecipeCraft> mfgRecipes)
         {
             foreach (var r in mfgRecipes)
                 _mfgByProduct[r.Output.Item.TypeId] = r;
         }
 
-        public void LoadReactions(IEnumerable<Recipe> rxRecipes)
+        public void LoadReactions(IEnumerable<RecipeCraft> rxRecipes)
         {
             foreach (var r in rxRecipes)
                 _rxByProduct[r.Output.Item.TypeId] = r;
         }
 
-        public Recipe ResolveByProductOrNull(int productTypeId, Activity activity)
+        public RecipeCraft ResolveByProductOrNull(int productTypeId, Activity activity)
         {
             if (activity == Activity.Manufacturing && _mfgByProduct.TryGetValue(productTypeId, out var m)) return m;
             if (activity == Activity.Reaction && _rxByProduct.TryGetValue(productTypeId, out var r)) return r;
             return null;
         }
 
-        public Recipe ResolveAnyOrNull(int productTypeId, IEnumerable<Activity> allowedOrder)
+        public RecipeCraft ResolveAnyOrNull(int productTypeId, IEnumerable<Activity> allowedOrder)
         {
             foreach (var a in allowedOrder)
             {
@@ -148,7 +148,7 @@ namespace Domain.Models
     public class CraftNode
     {
         // Вариант 1: узел-рецепт
-        public Recipe Recipe { get; set; }          // если null — значит лист-ресурс
+        public RecipeCraft Recipe { get; set; }          // если null — значит лист-ресурс
         public decimal TargetOutputQty { get; set; }
         public List<CraftNode> Children { get; set; } = new List<CraftNode>();
 
@@ -172,7 +172,7 @@ namespace Domain.Models
         public static CraftNode Leaf(ItemRef item, decimal qty, CraftParamsSet ps)
             => new CraftNode { IsLeaf = true, LeafItem = item, LeafQty = qty, ParamsSet = ps };
 
-        public static CraftNode FromRecipe(Recipe r, decimal target, CraftParamsSet ps)
+        public static CraftNode FromRecipe(RecipeCraft r, decimal target, CraftParamsSet ps)
             => new CraftNode { Recipe = r, TargetOutputQty = target, ParamsSet = ps };
     }
 
@@ -195,11 +195,11 @@ namespace Domain.Models
 
     public class CraftPlanner
     {
-        private readonly IRecipeCatalog _catalog;
+        private readonly IRecipeCraftCatalog _catalog;
         private readonly IRoundingPolicy _round;
         private readonly IReplacementPolicy _repl;
 
-        public CraftPlanner(IRecipeCatalog catalog, IRoundingPolicy round, IReplacementPolicy repl = null)
+        public CraftPlanner(IRecipeCraftCatalog catalog, IRoundingPolicy round, IReplacementPolicy repl = null)
         {
             _catalog = catalog;
             _round = round;
@@ -325,7 +325,7 @@ namespace Domain.Models
         // Считать ресурсы для N единиц продукта (Mixed или Strict — по BuildOptions)
         public static Dictionary<int, decimal> GetResourcesForUnits(
             CraftPlanner planner,
-            IRecipeCatalog catalog,
+            IRecipeCraftCatalog catalog,
             ItemRef product,
             decimal targetUnits,
             CraftParamsSet ps,
@@ -369,7 +369,7 @@ namespace Domain.Models
         // Ресурсы «на 1 единицу» итогового продукта (можно получить дроби)
         public static Dictionary<int, decimal> GetResourcesPerUnit(
             CraftPlanner planner,
-            IRecipeCatalog catalog,
+            IRecipeCraftCatalog catalog,
             ItemRef product,
             CraftParamsSet ps,
             BuildOptions opt)

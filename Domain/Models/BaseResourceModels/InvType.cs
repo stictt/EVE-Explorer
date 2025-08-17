@@ -3,7 +3,7 @@
 namespace Domain.Models.ResourceDTO
 {
 
-    public class BaseInvType
+    public class InvType
     {
         #pragma warning disable CS8618
         [Name("typeID")]

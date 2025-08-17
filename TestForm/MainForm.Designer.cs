@@ -121,19 +121,20 @@
                 "Посчитать ISK/час для сырой руды и рефайна по текущим ценам Джиты.",
                 "Открыть", btnOpenOre_Click, cardSize);
 
-            // --- Card: Moon (NEW) ---
+            // --- Card: Moon ---
             cardMoon = MakeCard("Лунные реакции (аналитика)",
                 "Сравнить маржу от лунной руды/материалов и конечных реакций/чертежей.",
                 "Открыть", btnOpenMoon_Click, cardSize);
 
-            // --- Card: PI (placeholder) ---
-            cardPi = MakeCard("Планетарка (скоро)",
-                "Калькулятор сетапов с учётом CPU/Power и выхода/час.", null, null, cardSize);
+            // --- Card: PI (NEW) ---
+            cardPi = MakeCard("Планетарка (PI)",
+                "Калькулятор сетапов с учётом CPU/Power, выпуск/час и налоги.",
+                "Открыть", btnOpenPi_Click, cardSize);
 
             flowCards.Controls.Add(cardArb);
             flowCards.Controls.Add(cardHist);
             flowCards.Controls.Add(cardOre);
-            flowCards.Controls.Add(cardMoon);   // <-- добавили
+            flowCards.Controls.Add(cardMoon);
             flowCards.Controls.Add(cardPi);
 
             // --- Form ---
@@ -231,7 +232,7 @@
         private System.Windows.Forms.Panel cardArb;
         private System.Windows.Forms.Panel cardHist;
         private System.Windows.Forms.Panel cardOre;
-        private System.Windows.Forms.Panel cardMoon;   // NEW
+        private System.Windows.Forms.Panel cardMoon;
         private System.Windows.Forms.Panel cardPi;
 
         private System.Windows.Forms.Label lblHistoryInfo;

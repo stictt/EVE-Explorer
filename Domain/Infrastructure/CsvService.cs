@@ -1,52 +1,28 @@
-﻿using Domain.Infrastructure;
-using Domain.Infrastructure.Interface;
+﻿// File: Loader/Infrastructure/CsvService.cs
+using System;
+using System.Collections.Generic;
+
 using Domain.Models.BaseResourceModels;
 using Domain.Models.ResourceDTO;
+using Domain.Infrastructure;
+using Domain.Services;
 
-namespace Domain.Services
+namespace Loader.Infrastructure
 {
-    public class CsvService 
+    public sealed class CsvService
     {
+        private readonly ILogger _logger;
         private readonly CSVMapService _mapCSV;
-        private readonly ILoggerBase _logger;
 
-        public CsvService(CSVMapService mapFactoryService, ILoggerBase logger)
+        public CsvService( CSVMapService mapCSV)
         {
-            _mapCSV = mapFactoryService;
-            _logger = logger;
+            _mapCSV = mapCSV ?? throw new ArgumentNullException(nameof(mapCSV));
         }
 
-        public List<AvailableGameResourceDTO> GetAvailableGameResources() 
-        {
+        // ==== базовые методы, как у вас было ====
+        public List<InvType> GetBaseInvTypes() =>
+            SafeRead<InvType>(Paths.DataInvTypesPath, "InvTypes");
 
-            List<BaseInvType> baseInvTypes = GetBaseInvTypes();
-            List<AvailableGameResourceDTO> gameResourceDTOs =
-                _mapCSV.MapingAvailableGameResources(baseInvTypes);
-
-            if (gameResourceDTOs == null || gameResourceDTOs.Count == 0) 
-            { 
-                _logger.LogError($"Type conversion error AvailableGameResourceDTO.");
-                return new List<AvailableGameResourceDTO>();
-            }
-            return gameResourceDTOs;
-        }
-
-        public List<BaseInvType> GetBaseInvTypes() 
-        {
-            CsvDataReader<BaseInvType> dataReader = new (Paths.DataInvTypesPath);
-            try
-            {
-                return dataReader.Read();
-            }
-            catch(Exception e)
-            {
-                _logger.LogError(String.Format("Unable to upload file BaseInvTypes in path {path}.", Paths.DataInvTypesPath));
-                _logger.LogError(String.Format("{Message}.",e.Message));
-                return new List<BaseInvType>();
-            }
-        }
-
-        // --- новое: чтение остальных CSV по стандартным путям ---
         public List<InvGroup> GetInvGroups() =>
             SafeRead<InvGroup>(Paths.DataInvGroupsPath, "InvGroups");
 
@@ -71,22 +47,18 @@ namespace Domain.Services
         public List<InvTypeMaterial> GetInvTypeMaterials() =>
             SafeRead<InvTypeMaterial>(Paths.DataInvTypeMaterialsPath, "InvTypeMaterials");
 
-        private List<T> SafeRead<T>(string path, string tag) where T : class
-        {
-            var reader = new CsvDataReader<T>(path);
-            try { return reader.Read(); }
-            catch (Exception e)
-            {
-                _logger.LogError($"Unable to upload file {tag} in path {path}.");
-                _logger.LogError(e.Message);
-                return new List<T>();
-            }
-        }
+        // ==== ДОБАВЛЕНО: PI CSV ====
 
-        // --- агрегат на базе существующих сервисов ---
+        public List<PlanetSchematic> GetPlanetSchematics() =>
+            SafeRead<PlanetSchematic>(Paths.PlanetSchematicsPath, "PlanetSchematics");
+
+        public List<PlanetSchematicTypeMap> GetPlanetSchematicsTypeMap() =>
+            SafeRead<PlanetSchematicTypeMap>(Paths.PlanetSchematicsTypeMapPath, "PlanetSchematicsTypeMap");
+
+        // ==== агрегат ====
         public SdeAggregateDTO BuildSdeAggregate()
         {
-            var types = GetBaseInvTypes(); // оставляем как есть
+            var types = GetBaseInvTypes();
             var groups = GetInvGroups();
             var cats = GetInvCategories();
             var mgs = GetInvMarketGroups();
@@ -98,5 +70,18 @@ namespace Domain.Services
 
             return _mapCSV.BuildAggregate(types, groups, cats, mgs, ia, iam, iap, ibl, itm);
         }
+
+        // ==== общая обёртка ====
+        private List<T> SafeRead<T>(string path, string tag) where T : class
+        {
+            var reader = new CsvDataReader<T>(path);
+            try { return reader.Read(); }
+            catch (Exception e)
+            {
+                return new List<T>();
+            }
+        }
     }
+
+
 }

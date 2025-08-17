@@ -31,7 +31,7 @@ namespace TestForm
             EnsureDefaults();
             _historyManager = new OrderHistoryMonthManager(_settings, Log);
 
-            _csv = new CsvService(new CSVMapService(), new LoggerFactoryBase().CreateLogger<CsvService>());
+            _csv = new CsvService(new CSVMapService());
 
             UiStyle.ApplyDark(this);
             UpdateHistoryLabels();
@@ -39,7 +39,7 @@ namespace TestForm
 
         private void EnsureDefaults()
         {
-
+            // при необходимости — инициализация дефолтов приложения
         }
 
         private void UpdateHistoryLabels()
@@ -126,7 +126,6 @@ namespace TestForm
                 Increment = 0.10M,
                 Minimum = 0,
                 Maximum = 100,
-
                 Dock = DockStyle.Top
             };
             var nudRefOre = new NumericUpDown
@@ -135,7 +134,6 @@ namespace TestForm
                 Increment = 0.10M,
                 Minimum = 0,
                 Maximum = 100,
-
                 Dock = DockStyle.Top
             };
             var nudRefIce = new NumericUpDown
@@ -144,7 +142,6 @@ namespace TestForm
                 Increment = 0.10M,
                 Minimum = 0,
                 Maximum = 100,
-
                 Dock = DockStyle.Top
             };
 
@@ -154,7 +151,6 @@ namespace TestForm
                 if (int.TryParse(tbRegion.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var r)) _settings.RegionId = r;
                 if (int.TryParse(tbPar.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var p)) _settings.Parallelism = p;
                 if (int.TryParse(tbStale.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var h)) _settings.HistoryStaleAfterHours = h;
-
 
                 SettingsService.Save(_settings);
                 UpdateHistoryLabels();
@@ -222,7 +218,7 @@ namespace TestForm
             }
         }
 
-        // --------- NEW: открыть окно аналитики лунных реакций ----------
+        // --------- Лунные реакции ----------
         private void btnOpenMoon_Click(object? sender, EventArgs e)
         {
             try
@@ -237,6 +233,32 @@ namespace TestForm
 
                 using var f = new MoonIndustryForm(_sde, priceProvider);
                 f.ShowDialog(this);
+
+                statusLabel.Text = "Готово";
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = "Ошибка: " + ex.Message;
+            }
+            finally
+            {
+                UseWaitCursor = false;
+            }
+        }
+
+        // --------- NEW: Планетарка (PI) ----------
+        private void btnOpenPi_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                UseWaitCursor = true;
+                statusLabel.Text = "Инициализация PI...";
+
+                // Ценовой провайдер как в остальных разделах
+                var priceProvider = new EsiPriceProvider(s => Log(s));
+
+                // Открыть свод PI через Bootstrap (ленивое чтение CSV PI-датасетов/конфига/резолвера имён)
+                
 
                 statusLabel.Text = "Готово";
             }

@@ -1,0 +1,88 @@
+{
+  "PiConfig": {
+    "Skills": {
+      "PlanetSlotsBySkillLevel": {
+        "4": 5,
+        "5": 6
+      },
+      "CommandCenterCapsByLevel": {
+        "4": {
+          "cpu": 21315,
+          "power": 17000
+        },
+        "5": {
+          "cpu": 25415,
+          "power": 19000
+        }
+      }
+    },
+
+    "Facilities": {
+      "ExtractorControlUnit": {
+        "cpuCost": 0,
+        "powerCost": 0
+      }, 
+      "BasicProcessor": {
+        "cpuCost": 200,
+        "powerCost": 800
+      }, 
+      "AdvancedProcessor": {
+        "cpuCost": 500,
+        "powerCost": 700
+      }, 
+      "HighTechProcessor": {
+        "cpuCost": 1100,
+        "powerCost": 400
+      }, 
+      "StorageFacility": {
+        "cpuCost": 500,
+        "powerCost": 700
+      },
+      "Launchpad": {
+        "cpuCost": 3600,
+        "powerCost": 700
+      },
+      "CommandCenter": {
+        "cpuCost": 0,
+        "powerCost": 0
+      } 
+    },
+
+    "Rules": {
+      "RequiredPerPlanet": {
+        "StorageFacility": 1,
+        "Launchpad": 1
+      },
+      "ProcessorByTier": {
+        "P1": "BasicProcessor",
+        "P2": "AdvancedProcessor",
+        "P3": "AdvancedProcessor",
+        "P4": "HighTechProcessor"
+      },
+      "LinkOverhead": {
+        "cpuPct": 0.03,
+        "powerPct": 0.03
+      }
+    },
+
+    "Taxes": {
+      "DefaultImportTaxRate": 0.002,
+      "DefaultExportTaxRate": 0.002,
+      "TaxBaseSource": "MarketPrice"
+    },
+
+    "Templates": {
+      "ExtractorToP1": {
+        "Description": "Колония-добытчик: T0→T1 (фикс.)",
+        "Facilities": {
+          "Launchpad": 1,
+          "StorageFacility": 1,
+          "ExtractorControlUnit": 1,
+          "BasicProcessor": 8,
+          "CommandCenter": 1
+        },
+        "OneResourcePerPlanet": true
+      }
+    }
+  }
+}

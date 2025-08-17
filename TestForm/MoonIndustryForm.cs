@@ -144,14 +144,14 @@ namespace TestForm
             _catalog.LoadManufacturing(MapFromSdeManufacturing());
         }
 
-        private IEnumerable<Recipe> MapFromSdeReactions()
+        private IEnumerable<RecipeCraft> MapFromSdeReactions()
         {
             foreach (var rec in _sde.Recipes.Where(r => r.ActivityID == ACT_REACTION))
             {
                 var main = rec.Products.FirstOrDefault();
                 if (main == null) continue;
 
-                yield return new Recipe
+                yield return new RecipeCraft
                 {
                     Id = new RecipeId { Kind = CraftKind.Reaction, BlueprintTypeId = 0, Activity = Activity.Reaction },
                     Output = new Product { Item = new ItemRef { TypeId = main.TypeID, Name = FindItem(main.TypeID)?.Name }, QtyPerRun = main.Quantity },
@@ -170,14 +170,14 @@ namespace TestForm
             }
         }
 
-        private IEnumerable<Recipe> MapFromSdeManufacturing()
+        private IEnumerable<RecipeCraft> MapFromSdeManufacturing()
         {
             foreach (var rec in _sde.Recipes.Where(r => r.ActivityID == ACT_MANUFACTURING))
             {
                 var main = rec.Products.FirstOrDefault();
                 if (main == null) continue;
 
-                yield return new Recipe
+                yield return new RecipeCraft
                 {
                     Id = new RecipeId { Kind = CraftKind.Blueprint, BlueprintTypeId = 0, Activity = Activity.Manufacturing },
                     Output = new Product { Item = new ItemRef { TypeId = main.TypeID, Name = FindItem(main.TypeID)?.Name }, QtyPerRun = main.Quantity },
