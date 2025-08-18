@@ -1,16 +1,23 @@
 ﻿using ANALYTICS;
 using Domain.Infrastructure;
+using Domain.Models.BaseResourceModels;
 using Domain.Models.ResourceDTO;
 using Domain.Services;
 using Loader.Infrastructure;
 using Loader.Services;
 using OreTools;
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
+// NEW:
+using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using TestForm;               // IPriceProvider, EsiPriceProvider
+using TestForm.Infrastructure; // PlanetaryAnalysisForm, ProductionPlanner, SdePiRepository, PiConfigProvider, DTOs
 
 namespace TestForm
 {
@@ -22,6 +29,12 @@ namespace TestForm
 
         private CsvService _csv;
         private SdeAggregateDTO? _sde;
+
+        // NEW: PI singletons (lazy)
+        private IPiConfigProvider? _piCfg;
+        private ISdePiRepository? _piRepo;
+        private IProductionPlanner? _piPlanner;
+        private PlanetaryAnalysisForm? _piForm;
 
         public MainForm()
         {
@@ -254,22 +267,194 @@ namespace TestForm
                 UseWaitCursor = true;
                 statusLabel.Text = "Инициализация PI...";
 
-                // Ценовой провайдер как в остальных разделах
-                var priceProvider = new EsiPriceProvider(s => Log(s));
+                EnsurePiInitialized(); // ленивый одноразовый init
 
-                // Открыть свод PI через Bootstrap (ленивое чтение CSV PI-датасетов/конфига/резолвера имён)
-                
+                // Цены — как в других разделах (можно поставить null, тогда кнопка Get Prices будет неактивна)
+                IPriceProvider? priceProvider = new EsiPriceProvider(s => Log(s));
+
+                if (_piPlanner == null)
+                    throw new InvalidOperationException("_piPlanner не инициализирован");
+                // _piRepo можно не передавать, но без него не будет имён — мы передаём.
+
+                if (_piForm == null || _piForm.IsDisposed)
+                {
+                    _piForm = new PlanetaryAnalysisForm(_piPlanner, _piRepo, priceProvider);
+                    _piForm.FormClosed += (_, __) => _piForm = null;
+                    _piForm.Show(this);          // modeless; нужно модальное — поменяй на ShowDialog(this)
+                }
+                else
+                {
+                    _piForm.BringToFront();
+                    _piForm.Focus();
+                }
 
                 statusLabel.Text = "Готово";
             }
             catch (Exception ex)
             {
                 statusLabel.Text = "Ошибка: " + ex.Message;
+                MessageBox.Show(this, ex.ToString(), "PI init error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
                 UseWaitCursor = false;
             }
         }
+
+        // =========================
+        // PI init (минимальный, без Bootstrap)
+        // =========================
+        private void EnsurePiInitialized()
+        {
+            if (_piPlanner != null) return;
+
+            // 1) Конфиг
+            if (!File.Exists(Paths.PiConfigPath))
+                throw new FileNotFoundException("Не найден pi.config.json", Paths.PiConfigPath);
+
+            _piCfg = new PiConfigProvider(Paths.PiConfigPath);
+
+            // 2) CSV через стандартный CsvDataReader<T>
+            if (!File.Exists(Paths.DataInvTypesPath))
+                throw new FileNotFoundException("Не найден invTypes.csv", Paths.DataInvTypesPath);
+            if (!File.Exists(Paths.PlanetSchematicsPath))
+                throw new FileNotFoundException("Не найден planetSchematics.csv", Paths.PlanetSchematicsPath);
+            if (!File.Exists(Paths.PlanetSchematicsTypeMapPath))
+                throw new FileNotFoundException("Не найден planetSchematicsTypeMap.csv", Paths.PlanetSchematicsTypeMapPath);
+            if (!File.Exists(Paths.PlanetSchematicsPinMapPath))
+                throw new FileNotFoundException("Не найден planetSchematicsPinMap.csv", Paths.PlanetSchematicsPinMapPath);
+
+            var invTypes = new CsvDataReader<InvType>(Paths.DataInvTypesPath).Read();
+            var schem = new CsvDataReader<PlanetSchematic>(Paths.PlanetSchematicsPath).Read();
+            var typeMap = new CsvDataReader<PlanetSchematicTypeMap>(Paths.PlanetSchematicsTypeMapPath).Read();
+            var pinMap = new CsvDataReader<PlanetSchematicPinMap>(Paths.PlanetSchematicsPinMapPath).Read();
+
+            // 3) Нормализация и защита от дублей/битых строк
+            invTypes = invTypes
+                .Where(x => x.TypeID > 0)
+                .GroupBy(x => x.TypeID)
+                .Select(g => g.First())
+                .ToList();
+
+            schem = schem
+                .Where(x => x.SchematicID > 0)
+                .GroupBy(x => x.SchematicID)
+                .Select(g => g.First())
+                .ToList();
+
+            typeMap = typeMap
+                .Where(x => x.SchematicID > 0 && x.TypeID > 0)
+                .ToList();
+
+            pinMap = pinMap
+                .Where(x => x.SchematicID > 0 && x.PinTypeID > 0)
+                .GroupBy(x => new { x.SchematicID, x.PinTypeID })
+                .Select(g => g.First())
+                .ToList();
+
+            // 4) Репозиторий + Планировщик
+            _piRepo = new SdePiRepository(_piCfg, invTypes, schem, typeMap, pinMap);
+            _piPlanner = new ProductionPlanner(_piRepo, _piCfg);
+        }
+
+        // =========================
+        // Простые CSV-лоадеры для PI (без внешних зависимостей)
+        // =========================
+        private static List<InvType> LoadInvTypes(string path)
+        {
+            var rows = ReadCsv(path);
+            return rows.Select(r => new InvType
+            {
+                TypeID = GetInt(r, "typeID"),
+                TypeName = GetStr(r, "typeName")
+            }).ToList();
+        }
+
+        private static List<PlanetSchematic> LoadPlanetSchematics(string path)
+        {
+            var rows = ReadCsv(Paths.PlanetSchematicsPath);
+            return rows.Select(r => new PlanetSchematic
+            {
+                SchematicID = GetInt(r, "schematicID"),
+                CycleTimeSeconds = GetInt(r, "cycleTime")
+            }).ToList();
+        }
+
+        private static List<PlanetSchematicTypeMap> LoadPlanetSchematicTypeMap(string path)
+        {
+            var rows = ReadCsv(Paths.PlanetSchematicsTypeMapPath);
+            return rows.Select(r => new PlanetSchematicTypeMap
+            {
+                SchematicID = GetInt(r, "schematicID"),
+                TypeID = GetInt(r, "typeID"),
+                Quantity = GetInt(r, "quantity"),
+                IsInput = GetBool(r, "isInput") || GetInt(r, "isInput") == 1
+            }).ToList();
+        }
+
+        private static List<PlanetSchematicPinMap> LoadPlanetSchematicPinMap(string path)
+        {
+            var rows = ReadCsv(Paths.PlanetSchematicsPinMapPath);
+            return rows.Select(r => new PlanetSchematicPinMap
+            {
+                SchematicID = GetInt(r, "schematicID"),
+                PinTypeID = GetInt(r, "pinTypeID")
+            }).ToList();
+        }
+
+        // --- CSV helpers (разделитель — запятая; если у тебя ';', замени SplitCsvLine) ---
+        private static List<Dictionary<string, string>> ReadCsv(string path)
+        {
+            if (!File.Exists(path)) throw new FileNotFoundException("CSV не найден", path);
+            var lines = File.ReadAllLines(path).Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+            if (lines.Count == 0) return new();
+
+            var header = SplitCsvLine(lines[0]).Select(h => h.Trim()).ToArray();
+            var list = new List<Dictionary<string, string>>(lines.Count - 1);
+
+            for (int i = 1; i < lines.Count; i++)
+            {
+                var cells = SplitCsvLine(lines[i]);
+                var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                for (int c = 0; c < header.Length && c < cells.Count; c++)
+                    dict[header[c]] = cells[c];
+                list.Add(dict);
+            }
+            return list;
+        }
+
+        private static List<string> SplitCsvLine(string line)
+        {
+            var res = new List<string>();
+            if (string.IsNullOrEmpty(line)) { res.Add(""); return res; }
+            bool inQuotes = false;
+            var cur = new System.Text.StringBuilder();
+            for (int i = 0; i < line.Length; i++)
+            {
+                char ch = line[i];
+                if (ch == '"')
+                {
+                    if (inQuotes && i + 1 < line.Length && line[i + 1] == '"') { cur.Append('"'); i++; }
+                    else inQuotes = !inQuotes;
+                }
+                else if (ch == ',' && !inQuotes)
+                {
+                    res.Add(cur.ToString().Trim());
+                    cur.Clear();
+                }
+                else cur.Append(ch);
+            }
+            res.Add(cur.ToString().Trim());
+            return res;
+        }
+
+        private static int GetInt(Dictionary<string, string> r, string k)
+            => r.TryGetValue(k, out var v) && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var x) ? x : 0;
+
+        private static string GetStr(Dictionary<string, string> r, string k)
+            => r.TryGetValue(k, out var v) ? v : "";
+
+        private static bool GetBool(Dictionary<string, string> r, string k)
+            => r.TryGetValue(k, out var v) && (v.Equals("true", StringComparison.OrdinalIgnoreCase) || v == "1");
     }
 }

@@ -21,19 +21,19 @@
       "ExtractorControlUnit": {
         "cpuCost": 0,
         "powerCost": 0
-      }, 
+      },
       "BasicProcessor": {
         "cpuCost": 200,
         "powerCost": 800
-      }, 
+      },
       "AdvancedProcessor": {
         "cpuCost": 500,
         "powerCost": 700
-      }, 
+      },
       "HighTechProcessor": {
         "cpuCost": 1100,
         "powerCost": 400
-      }, 
+      },
       "StorageFacility": {
         "cpuCost": 500,
         "powerCost": 700
@@ -45,7 +45,7 @@
       "CommandCenter": {
         "cpuCost": 0,
         "powerCost": 0
-      } 
+      }
     },
 
     "Rules": {
@@ -72,16 +72,28 @@
     },
 
     "Templates": {
-      "ExtractorToP1": {
-        "Description": "Колония-добытчик: T0→T1 (фикс.)",
+      "Extraction_Default": {
+        "Facilities": {
+          "ECU": 1,
+          "ExtractorHead": 10,
+          "Launchpad": 1,
+          "Storage": 1,
+          "Basic": 8
+        }
+      },
+      "Factory_Advanced_Default": {
         "Facilities": {
           "Launchpad": 1,
-          "StorageFacility": 1,
-          "ExtractorControlUnit": 1,
-          "BasicProcessor": 8,
-          "CommandCenter": 1
-        },
-        "OneResourcePerPlanet": true
+          "Storage": 1,
+          "Advanced": 6
+        }
+      },
+      "Factory_HighTech_Default": {
+        "Facilities": {
+          "Launchpad": 1,
+          "Storage": 5,
+          "HighTech": 17
+        }
       }
     }
   }

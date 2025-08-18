@@ -6,6 +6,7 @@
         public static string CurrentDirectory => Environment.CurrentDirectory;
 
         public static string DataResourcePath => Path.Combine(CurrentDirectory, "Resource");
+        public static string PiConfigPath => Path.Combine(CurrentDirectory, "pi.config.json");
 
         public static string DataInvTypesPath => Path.Combine(DataResourcePath, "invTypes.csv");
         public static string DataMapRegionsPath => Path.Combine(DataResourcePath, "mapRegions.csv");
