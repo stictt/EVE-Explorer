@@ -84,15 +84,15 @@
       "Factory_Advanced_Default": {
         "Facilities": {
           "Launchpad": 1,
-          "Storage": 1,
-          "Advanced": 6
+          "Storage": 2,
+          "Advanced": 20
         }
       },
       "Factory_HighTech_Default": {
         "Facilities": {
-          "Launchpad": 1,
-          "Storage": 5,
-          "HighTech": 17
+          "Launchpad": 3,
+          
+          "HighTech": 12
         }
       }
     }
